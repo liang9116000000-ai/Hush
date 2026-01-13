@@ -1,4 +1,4 @@
-export type QwenModel = 'qwen-turbo' | 'qwen-plus' | 'qwen-max'
+export type QwenModel = 'qwen-turbo' | 'qwen-plus' | 'qwen-max' | 'qwen-vl-max'
 
 export type ChatRole = 'system' | 'user' | 'assistant'
 

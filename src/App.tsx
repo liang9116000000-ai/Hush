@@ -12,9 +12,14 @@ import {
   DEFAULT_QWEN_API_BASE,
   type QwenModel,
 } from './lib/qwen'
+import {
+  QwenImageError,
+  generateImage,
+  DEFAULT_QWEN_IMAGE_API_BASE,
+} from './lib/qwen-image'
 import { getSetting, setSetting, DB_KEYS } from './lib/db'
 
-type ModelType = DeepSeekModel | QwenModel
+type ModelType = DeepSeekModel | QwenModel | 'wanx-v1'
 
 function AttachIcon() {
   return (
@@ -124,6 +129,72 @@ function DeleteIcon() {
   )
 }
 
+function MessageContent({ content }: { content: string }) {
+  const [previewImage, setPreviewImage] = useState<string | null>(null)
+  
+  // 检测是否包含图片 Markdown
+  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
+  const parts: Array<{ type: 'text' | 'image'; content: string; alt?: string }> = []
+  let lastIndex = 0
+  let match
+
+  while ((match = imageRegex.exec(content)) !== null) {
+    // 添加图片前的文本
+    if (match.index > lastIndex) {
+      parts.push({ type: 'text', content: content.slice(lastIndex, match.index) })
+    }
+    // 添加图片
+    parts.push({ type: 'image', content: match[2], alt: match[1] })
+    lastIndex = match.index + match[0].length
+  }
+
+  // 添加剩余文本
+  if (lastIndex < content.length) {
+    parts.push({ type: 'text', content: content.slice(lastIndex) })
+  }
+
+  // 如果没有图片，直接返回文本
+  if (parts.length === 0) {
+    return <div className="msgContent">{content}</div>
+  }
+
+  return (
+    <>
+      <div className="msgContent">
+        {parts.map((part, idx) => {
+          if (part.type === 'image') {
+            return (
+              <div key={idx} className="msgImage">
+                <img 
+                  src={part.content} 
+                  alt={part.alt || '生成的图像'} 
+                  onClick={() => setPreviewImage(part.content)}
+                  loading="lazy"
+                />
+              </div>
+            )
+          }
+          return part.content ? <div key={idx}>{part.content}</div> : null
+        })}
+      </div>
+      {previewImage && (
+        <div className="imagePreview" onClick={() => setPreviewImage(null)}>
+          <div className="imagePreviewContent" onClick={(e) => e.stopPropagation()}>
+            <img src={previewImage} alt="预览" />
+            <button 
+              className="imagePreviewClose" 
+              onClick={() => setPreviewImage(null)}
+              aria-label="关闭"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 function ThinkingDots() {
   return (
     <div className="thinkingDots">
@@ -171,6 +242,8 @@ export default function App() {
   const [apiBaseReasonerModel, setApiBaseReasonerModel] = useState<string>(DEFAULT_API_BASE)
   const [apiKeyQwen, setApiKeyQwen] = useState<string>('')
   const [apiBaseQwen, setApiBaseQwen] = useState<string>(DEFAULT_QWEN_API_BASE)
+  const [apiKeyQwenImage, setApiKeyQwenImage] = useState<string>('')
+  const [apiBaseQwenImage, setApiBaseQwenImage] = useState<string>(DEFAULT_QWEN_IMAGE_API_BASE)
   const [model, setModel] = useState<ModelType>('deepseek-chat')
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string>('')
@@ -269,10 +342,15 @@ export default function App() {
     queueMicrotask(scrollToBottom)
 
     const isQwen = model.startsWith('qwen-')
-    const apiKey = isQwen 
+    const isImage = model === 'wanx-v1'
+    const apiKey = isImage
+      ? apiKeyQwenImage
+      : isQwen 
       ? apiKeyQwen 
       : model === 'deepseek-chat' ? apiKeyChatModel : apiKeyReasonerModel
-    const apiBase = isQwen 
+    const apiBase = isImage
+      ? apiBaseQwenImage
+      : isQwen 
       ? apiBaseQwen 
       : model === 'deepseek-chat' ? apiBaseChatModel : apiBaseReasonerModel
 
@@ -284,7 +362,7 @@ export default function App() {
             ...s,
             messages: s.messages.map((m): StoredChatMessage =>
               m.localId === assistantPlaceholderId
-                ? makeAssistantMessage(`未配置 ${isQwen ? '千问' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
+                ? makeAssistantMessage(`未配置 ${isImage ? '千问图像' : isQwen ? '千问' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
                 : m,
             ),
           }
@@ -302,64 +380,107 @@ export default function App() {
       .map((m) => ({ role: m.role, content: m.content }))
 
     try {
-      let acc = ''
-      
-      if (isQwen) {
-        for await (const delta of streamQwenChatCompletion({
+      if (isImage) {
+        // 图像生成
+        const urls = await generateImage({
           apiKey,
           apiBase,
-          model: model as QwenModel,
-          messages: [...baseMessages, { role: 'user', content }],
+          prompt: content,
           signal: abortRef.current.signal,
-        })) {
-          acc += delta
-          const nextText = acc
-          setSessions((prev) => {
-            const next = prev.map((s) => {
-              if (s.id !== activeSessionId) return s
-              const updated = {
-                ...s,
-                messages: s.messages.map((m): StoredChatMessage =>
-                  m.localId === assistantPlaceholderId ? makeAssistantMessage(nextText, assistantPlaceholderId) : m,
-                ),
-              }
-              return updated
+          onProgress: (status) => {
+            setSessions((prev) => {
+              const next = prev.map((s) => {
+                if (s.id !== activeSessionId) return s
+                const updated = {
+                  ...s,
+                  messages: s.messages.map((m): StoredChatMessage =>
+                    m.localId === assistantPlaceholderId ? makeAssistantMessage(status, assistantPlaceholderId) : m,
+                  ),
+                }
+                return updated
+              })
+              persistSessions(next)
+              return next
             })
-            persistSessions(next)
-            return next
+            scrollToBottom()
+          },
+        })
+        
+        const imageMarkdown = urls.map(url => `![生成的图像](${url})`).join('\n\n')
+        setSessions((prev) => {
+          const next = prev.map((s) => {
+            if (s.id !== activeSessionId) return s
+            const updated = {
+              ...s,
+              messages: s.messages.map((m): StoredChatMessage =>
+                m.localId === assistantPlaceholderId ? makeAssistantMessage(imageMarkdown, assistantPlaceholderId) : m,
+              ),
+            }
+            return updated
           })
-          scrollToBottom()
-        }
+          persistSessions(next)
+          return next
+        })
       } else {
-        for await (const delta of streamDeepSeekChatCompletion({
-          apiKey,
-          apiBase,
-          model: model as DeepSeekModel,
-          messages: [...baseMessages, { role: 'user', content }],
-          signal: abortRef.current.signal,
-        })) {
-          acc += delta
-          const nextText = acc
-          setSessions((prev) => {
-            const next = prev.map((s) => {
-              if (s.id !== activeSessionId) return s
-              const updated = {
-                ...s,
-                messages: s.messages.map((m): StoredChatMessage =>
-                  m.localId === assistantPlaceholderId ? makeAssistantMessage(nextText, assistantPlaceholderId) : m,
-                ),
-              }
-              return updated
+        let acc = ''
+        
+        if (isQwen) {
+          for await (const delta of streamQwenChatCompletion({
+            apiKey,
+            apiBase,
+            model: model as QwenModel,
+            messages: [...baseMessages, { role: 'user', content }],
+            signal: abortRef.current.signal,
+          })) {
+            acc += delta
+            const nextText = acc
+            setSessions((prev) => {
+              const next = prev.map((s) => {
+                if (s.id !== activeSessionId) return s
+                const updated = {
+                  ...s,
+                  messages: s.messages.map((m): StoredChatMessage =>
+                    m.localId === assistantPlaceholderId ? makeAssistantMessage(nextText, assistantPlaceholderId) : m,
+                  ),
+                }
+                return updated
+              })
+              persistSessions(next)
+              return next
             })
-            persistSessions(next)
-            return next
-          })
-          scrollToBottom()
+            scrollToBottom()
+          }
+        } else {
+          for await (const delta of streamDeepSeekChatCompletion({
+            apiKey,
+            apiBase,
+            model: model as DeepSeekModel,
+            messages: [...baseMessages, { role: 'user', content }],
+            signal: abortRef.current.signal,
+          })) {
+            acc += delta
+            const nextText = acc
+            setSessions((prev) => {
+              const next = prev.map((s) => {
+                if (s.id !== activeSessionId) return s
+                const updated = {
+                  ...s,
+                  messages: s.messages.map((m): StoredChatMessage =>
+                    m.localId === assistantPlaceholderId ? makeAssistantMessage(nextText, assistantPlaceholderId) : m,
+                  ),
+                }
+                return updated
+              })
+              persistSessions(next)
+              return next
+            })
+            scrollToBottom()
+          }
         }
       }
     } catch (err) {
       const msg =
-        err instanceof DeepSeekError || err instanceof QwenError
+        err instanceof DeepSeekError || err instanceof QwenError || err instanceof QwenImageError
           ? err.message
           : err instanceof Error
             ? err.message
@@ -391,6 +512,8 @@ export default function App() {
     apiBaseReasonerModel,
     apiKeyQwen,
     apiBaseQwen,
+    apiKeyQwenImage,
+    apiBaseQwenImage,
     draft,
     isSending,
     model,
@@ -419,6 +542,8 @@ export default function App() {
           savedApiBaseReasonerModel,
           savedApiKeyQwen,
           savedApiBaseQwen,
+          savedApiKeyQwenImage,
+          savedApiBaseQwenImage,
           savedModel,
           savedChats,
         ] = await Promise.all([
@@ -428,6 +553,8 @@ export default function App() {
           getSetting<string>(DB_KEYS.API_BASE_REASONER),
           getSetting<string>(DB_KEYS.API_KEY_QWEN),
           getSetting<string>(DB_KEYS.API_BASE_QWEN),
+          getSetting<string>(DB_KEYS.API_KEY_QWEN_IMAGE),
+          getSetting<string>(DB_KEYS.API_BASE_QWEN_IMAGE),
           getSetting<ModelType>(DB_KEYS.MODEL),
           getSetting<ChatSession[]>(DB_KEYS.CHATS),
         ])
@@ -438,6 +565,8 @@ export default function App() {
         if (savedApiBaseReasonerModel) setApiBaseReasonerModel(savedApiBaseReasonerModel)
         if (savedApiKeyQwen) setApiKeyQwen(savedApiKeyQwen)
         if (savedApiBaseQwen) setApiBaseQwen(savedApiBaseQwen)
+        if (savedApiKeyQwenImage) setApiKeyQwenImage(savedApiKeyQwenImage)
+        if (savedApiBaseQwenImage) setApiBaseQwenImage(savedApiBaseQwenImage)
         if (savedModel) setModel(savedModel)
 
         if (savedChats && savedChats.length > 0) {
@@ -493,6 +622,16 @@ export default function App() {
     if (isLoading) return
     setSetting(DB_KEYS.API_BASE_QWEN, apiBaseQwen)
   }, [apiBaseQwen, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_KEY_QWEN_IMAGE, apiKeyQwenImage)
+  }, [apiKeyQwenImage, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_BASE_QWEN_IMAGE, apiBaseQwenImage)
+  }, [apiBaseQwenImage, isLoading])
 
   useEffect(() => {
     if (isLoading) return
@@ -715,7 +854,8 @@ export default function App() {
                         {model === 'deepseek-chat' ? 'DeepSeek' : 
                          model === 'deepseek-reasoner' ? 'DeepSeek R1' : 
                          model === 'qwen-turbo' ? '千问 Turbo' :
-                         model === 'qwen-plus' ? '千问 Plus' : '千问 Max'}
+                         model === 'qwen-plus' ? '千问 Plus' : 
+                         model === 'qwen-max' ? '千问 Max' : '千问图像'}
                       </span>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                         <path d="M6 9l6 6 6-6" />
@@ -825,6 +965,29 @@ export default function App() {
                           </div>
                           {model === 'qwen-turbo' ? <span className="titleModelCheck">✓</span> : null}
                         </button>
+                        <div className="titleModelDivider" />
+                        <button
+                          type="button"
+                          className="titleModelMenuItem"
+                          onClick={() => {
+                            setModel('wanx-v1')
+                            setIsModelMenuOpen(false)
+                          }}
+                        >
+                          <span className="titleModelIcon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="3" y="3" width="18" height="18" rx="2" />
+                              <path d="M9 9h.01" strokeLinecap="round" />
+                              <path d="M15 15l-3-3-6 6" />
+                              <circle cx="17.5" cy="7.5" r="1.5" />
+                            </svg>
+                          </span>
+                          <div className="titleModelText">
+                            <div className="titleModelTitle">千问图像</div>
+                            <div className="titleModelSub">AI 图像生成</div>
+                          </div>
+                          {model === 'wanx-v1' ? <span className="titleModelCheck">✓</span> : null}
+                        </button>
                       </div>
                     ) : null}
                   </div>
@@ -871,7 +1034,7 @@ export default function App() {
                     {m.role === 'assistant' && m.content === '' ? (
                       <ThinkingDots />
                     ) : (
-                      <div className="msgContent">{m.content}</div>
+                      <MessageContent content={m.content} />
                     )}
                   </div>
                 </div>
@@ -1051,6 +1214,30 @@ export default function App() {
                 </label>
               </div>
 
+              <div className="settingsSection">
+                <div className="settingsSectionTitle">千问图像 配置</div>
+                <label className="field">
+                  <div className="fieldLabel">API Base URL</div>
+                  <input
+                    value={apiBaseQwenImage}
+                    className="fieldInput"
+                    type="text"
+                    placeholder={DEFAULT_QWEN_IMAGE_API_BASE}
+                    onChange={(e) => setApiBaseQwenImage(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <div className="fieldLabel">API Key</div>
+                  <input
+                    value={apiKeyQwenImage}
+                    className="fieldInput"
+                    type="password"
+                    placeholder="sk-..."
+                    onChange={(e) => setApiKeyQwenImage(e.target.value)}
+                  />
+                </label>
+              </div>
+
               <label className="field">
                 <div className="fieldLabel">默认模型</div>
                 <select value={model} className="fieldInput" onChange={(e) => setModel(e.target.value as ModelType)}>
@@ -1059,6 +1246,7 @@ export default function App() {
                   <option value="qwen-plus">qwen-plus</option>
                   <option value="qwen-turbo">qwen-turbo</option>
                   <option value="qwen-max">qwen-max</option>
+                  <option value="wanx-v1">千问图像 (wanx-v1)</option>
                 </select>
               </label>
 

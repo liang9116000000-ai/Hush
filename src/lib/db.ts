@@ -73,6 +73,8 @@ export const DB_KEYS = {
   API_BASE_REASONER: 'apiBase.deepseek.reasoner',
   API_KEY_QWEN: 'apiKey.qwen',
   API_BASE_QWEN: 'apiBase.qwen',
+  API_KEY_QWEN_IMAGE: 'apiKey.qwen.image',
+  API_BASE_QWEN_IMAGE: 'apiBase.qwen.image',
   MODEL: 'model',
   CHATS: 'chats',
 } as const
