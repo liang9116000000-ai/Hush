@@ -149,15 +149,6 @@ function nowId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function safeJsonParse<T>(value: string | null): T | null {
-  if (!value) return null
-  try {
-    return JSON.parse(value) as T
-  } catch {
-    return null
-  }
-}
-
 function ensureTitleFromFirstUserMessage(session: ChatSession) {
   if (session.title !== '新对话') return
   const firstUser = session.messages.find((m) => m.role === 'user')?.content?.trim()
