@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  createDeepSeekChatCompletion,
   DeepSeekError,
   streamDeepSeekChatCompletion,
   DEFAULT_API_BASE,
   type ChatMessage,
   type DeepSeekModel,
 } from './lib/deepseek'
+import {
+  QwenError,
+  streamQwenChatCompletion,
+  DEFAULT_QWEN_API_BASE,
+  type QwenModel,
+} from './lib/qwen'
+import { getSetting, setSetting, DB_KEYS } from './lib/db'
+
+type ModelType = DeepSeekModel | QwenModel
 
 function AttachIcon() {
   return (
@@ -137,13 +145,6 @@ type ChatSession = {
   messages: StoredChatMessage[]
 }
 
-const STORAGE_KEY = 'soulcode.chats.v1'
-const STORAGE_API_KEY_CHAT = 'soulcode.deepseek.apiKey.chat'
-const STORAGE_API_KEY_REASONER = 'soulcode.deepseek.apiKey.reasoner'
-const STORAGE_API_BASE_CHAT = 'soulcode.deepseek.apiBase.chat'
-const STORAGE_API_BASE_REASONER = 'soulcode.deepseek.apiBase.reasoner'
-const STORAGE_MODEL = 'soulcode.deepseek.model'
-
 function nowId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
@@ -173,13 +174,13 @@ function makeAssistantMessage(content: string, localId: string): StoredChatMessa
 }
 
 export default function App() {
-  const [apiKeyChatModel, setApiKeyChatModel] = useState<string>(() => localStorage.getItem(STORAGE_API_KEY_CHAT) ?? '')
-  const [apiKeyReasonerModel, setApiKeyReasonerModel] = useState<string>(() => localStorage.getItem(STORAGE_API_KEY_REASONER) ?? '')
-  const [apiBaseChatModel, setApiBaseChatModel] = useState<string>(() => localStorage.getItem(STORAGE_API_BASE_CHAT) ?? DEFAULT_API_BASE)
-  const [apiBaseReasonerModel, setApiBaseReasonerModel] = useState<string>(() => localStorage.getItem(STORAGE_API_BASE_REASONER) ?? DEFAULT_API_BASE)
-  const [model, setModel] = useState<DeepSeekModel>(
-    () => (localStorage.getItem(STORAGE_MODEL) as DeepSeekModel | null) ?? 'deepseek-chat',
-  )
+  const [apiKeyChatModel, setApiKeyChatModel] = useState<string>('')
+  const [apiKeyReasonerModel, setApiKeyReasonerModel] = useState<string>('')
+  const [apiBaseChatModel, setApiBaseChatModel] = useState<string>(DEFAULT_API_BASE)
+  const [apiBaseReasonerModel, setApiBaseReasonerModel] = useState<string>(DEFAULT_API_BASE)
+  const [apiKeyQwen, setApiKeyQwen] = useState<string>('')
+  const [apiBaseQwen, setApiBaseQwen] = useState<string>(DEFAULT_QWEN_API_BASE)
+  const [model, setModel] = useState<ModelType>('deepseek-chat')
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string>('')
   const [draft, setDraft] = useState<string>('')
@@ -191,6 +192,7 @@ export default function App() {
   const [pendingDeleteSession, setPendingDeleteSession] = useState<ChatSession | null>(null)
   const [isSending, setIsSending] = useState(false)
   const [errorText, setErrorText] = useState<string>('')
+  const [isLoading, setIsLoading] = useState(true)
 
   const abortRef = useRef<AbortController | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
@@ -209,7 +211,7 @@ export default function App() {
   }, [])
 
   const persistSessions = useCallback((nextSessions: ChatSession[]) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(nextSessions))
+    setSetting(DB_KEYS.CHATS, nextSessions)
   }, [])
 
   const newChat = useCallback(() => {
@@ -275,8 +277,13 @@ export default function App() {
     setDraft('')
     queueMicrotask(scrollToBottom)
 
-    const apiKey = model === 'deepseek-chat' ? apiKeyChatModel : apiKeyReasonerModel
-    const apiBase = model === 'deepseek-chat' ? apiBaseChatModel : apiBaseReasonerModel
+    const isQwen = model.startsWith('qwen-')
+    const apiKey = isQwen 
+      ? apiKeyQwen 
+      : model === 'deepseek-chat' ? apiKeyChatModel : apiKeyReasonerModel
+    const apiBase = isQwen 
+      ? apiBaseQwen 
+      : model === 'deepseek-chat' ? apiBaseChatModel : apiBaseReasonerModel
 
     if (!apiKey) {
       setSessions((prev) => {
@@ -286,7 +293,7 @@ export default function App() {
             ...s,
             messages: s.messages.map((m): StoredChatMessage =>
               m.localId === assistantPlaceholderId
-                ? makeAssistantMessage('未配置 DeepSeek API Key（左下角设置）。', assistantPlaceholderId)
+                ? makeAssistantMessage(`未配置 ${isQwen ? '千问' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
                 : m,
             ),
           }
@@ -304,35 +311,39 @@ export default function App() {
       .map((m) => ({ role: m.role, content: m.content }))
 
     try {
-      const useStream = true
-      if (!useStream) {
-        const text = await createDeepSeekChatCompletion({
+      let acc = ''
+      
+      if (isQwen) {
+        for await (const delta of streamQwenChatCompletion({
           apiKey,
           apiBase,
-          model,
+          model: model as QwenModel,
           messages: [...baseMessages, { role: 'user', content }],
           signal: abortRef.current.signal,
-        })
-        setSessions((prev) => {
-          const next = prev.map((s) => {
-            if (s.id !== activeSessionId) return s
-            const updated = {
-              ...s,
-              messages: s.messages.map((m): StoredChatMessage =>
-                m.localId === assistantPlaceholderId ? makeAssistantMessage(text, assistantPlaceholderId) : m,
-              ),
-            }
-            return updated
+        })) {
+          acc += delta
+          const nextText = acc
+          setSessions((prev) => {
+            const next = prev.map((s) => {
+              if (s.id !== activeSessionId) return s
+              const updated = {
+                ...s,
+                messages: s.messages.map((m): StoredChatMessage =>
+                  m.localId === assistantPlaceholderId ? makeAssistantMessage(nextText, assistantPlaceholderId) : m,
+                ),
+              }
+              return updated
+            })
+            persistSessions(next)
+            return next
           })
-          persistSessions(next)
-          return next
-        })
+          scrollToBottom()
+        }
       } else {
-        let acc = ''
         for await (const delta of streamDeepSeekChatCompletion({
           apiKey,
           apiBase,
-          model,
+          model: model as DeepSeekModel,
           messages: [...baseMessages, { role: 'user', content }],
           signal: abortRef.current.signal,
         })) {
@@ -357,7 +368,7 @@ export default function App() {
       }
     } catch (err) {
       const msg =
-        err instanceof DeepSeekError
+        err instanceof DeepSeekError || err instanceof QwenError
           ? err.message
           : err instanceof Error
             ? err.message
@@ -387,6 +398,8 @@ export default function App() {
     apiKeyReasonerModel,
     apiBaseChatModel,
     apiBaseReasonerModel,
+    apiKeyQwen,
+    apiBaseQwen,
     draft,
     isSending,
     model,
@@ -404,71 +417,108 @@ export default function App() {
     [send],
   )
 
+  // 从 IndexedDB 加载设置
   useEffect(() => {
-    const parsed = safeJsonParse<unknown>(localStorage.getItem(STORAGE_KEY))
-    if (Array.isArray(parsed) && parsed.length) {
-      const normalized = parsed
-        .map((raw) => raw as Partial<ChatSession>)
-        .filter((s) => typeof s.id === 'string' && typeof s.title === 'string' && typeof s.createdAt === 'number')
-        .map((s) => {
-          const rawMessages = Array.isArray(s.messages) ? (s.messages as Array<ChatMessage & { localId?: string }>) : []
-          const normalizedMessages: StoredChatMessage[] = rawMessages.flatMap((m) => {
-            if (!m) return []
-            if (typeof m.content !== 'string') return []
-            if (m.role !== 'system' && m.role !== 'user' && m.role !== 'assistant') return []
-            return [
-              {
-                role: m.role,
-                content: m.content,
-                localId: typeof m.localId === 'string' ? m.localId : nowId(),
-              },
-            ]
-          })
-          return {
-            id: s.id as string,
-            title: s.title as string,
-            createdAt: s.createdAt as number,
-            messages: normalizedMessages,
-          } satisfies ChatSession
-        })
+    async function loadSettings() {
+      try {
+        const [
+          savedApiKeyChatModel,
+          savedApiKeyReasonerModel,
+          savedApiBaseChatModel,
+          savedApiBaseReasonerModel,
+          savedApiKeyQwen,
+          savedApiBaseQwen,
+          savedModel,
+          savedChats,
+        ] = await Promise.all([
+          getSetting<string>(DB_KEYS.API_KEY_CHAT),
+          getSetting<string>(DB_KEYS.API_KEY_REASONER),
+          getSetting<string>(DB_KEYS.API_BASE_CHAT),
+          getSetting<string>(DB_KEYS.API_BASE_REASONER),
+          getSetting<string>(DB_KEYS.API_KEY_QWEN),
+          getSetting<string>(DB_KEYS.API_BASE_QWEN),
+          getSetting<ModelType>(DB_KEYS.MODEL),
+          getSetting<ChatSession[]>(DB_KEYS.CHATS),
+        ])
 
-      if (normalized.length) {
-        setSessions(normalized)
-        setActiveSessionId(normalized[0].id)
-        return
+        if (savedApiKeyChatModel) setApiKeyChatModel(savedApiKeyChatModel)
+        if (savedApiKeyReasonerModel) setApiKeyReasonerModel(savedApiKeyReasonerModel)
+        if (savedApiBaseChatModel) setApiBaseChatModel(savedApiBaseChatModel)
+        if (savedApiBaseReasonerModel) setApiBaseReasonerModel(savedApiBaseReasonerModel)
+        if (savedApiKeyQwen) setApiKeyQwen(savedApiKeyQwen)
+        if (savedApiBaseQwen) setApiBaseQwen(savedApiBaseQwen)
+        if (savedModel) setModel(savedModel)
+
+        if (savedChats && savedChats.length > 0) {
+          setSessions(savedChats)
+          setActiveSessionId(savedChats[0].id)
+        } else {
+          const id = nowId()
+          const session: ChatSession = { id, title: '新对话', createdAt: Date.now(), messages: [] }
+          setSessions([session])
+          setActiveSessionId(id)
+          await setSetting(DB_KEYS.CHATS, [session])
+        }
+      } catch (err) {
+        console.error('加载设置失败:', err)
+        const id = nowId()
+        const session: ChatSession = { id, title: '新对话', createdAt: Date.now(), messages: [] }
+        setSessions([session])
+        setActiveSessionId(id)
+      } finally {
+        setIsLoading(false)
       }
     }
+    loadSettings()
+  }, [])
 
-    const id = nowId()
-    const session: ChatSession = { id, title: '新对话', createdAt: Date.now(), messages: [] }
-    setSessions([session])
-    setActiveSessionId(id)
-    persistSessions([session])
-  }, [persistSessions])
+  // 保存设置到 IndexedDB
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_KEY_CHAT, apiKeyChatModel)
+  }, [apiKeyChatModel, isLoading])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_API_KEY_CHAT, apiKeyChatModel)
-  }, [apiKeyChatModel])
+    if (isLoading) return
+    setSetting(DB_KEYS.API_KEY_REASONER, apiKeyReasonerModel)
+  }, [apiKeyReasonerModel, isLoading])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_API_KEY_REASONER, apiKeyReasonerModel)
-  }, [apiKeyReasonerModel])
+    if (isLoading) return
+    setSetting(DB_KEYS.API_BASE_CHAT, apiBaseChatModel)
+  }, [apiBaseChatModel, isLoading])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_API_BASE_CHAT, apiBaseChatModel)
-  }, [apiBaseChatModel])
+    if (isLoading) return
+    setSetting(DB_KEYS.API_BASE_REASONER, apiBaseReasonerModel)
+  }, [apiBaseReasonerModel, isLoading])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_API_BASE_REASONER, apiBaseReasonerModel)
-  }, [apiBaseReasonerModel])
+    if (isLoading) return
+    setSetting(DB_KEYS.API_KEY_QWEN, apiKeyQwen)
+  }, [apiKeyQwen, isLoading])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_MODEL, model)
-  }, [model])
+    if (isLoading) return
+    setSetting(DB_KEYS.API_BASE_QWEN, apiBaseQwen)
+  }, [apiBaseQwen, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.MODEL, model)
+  }, [model, isLoading])
 
   useEffect(() => {
     queueMicrotask(scrollToBottom)
   }, [messages.length, scrollToBottom])
+
+  if (isLoading) {
+    return (
+      <div className="loadingScreen">
+        <div className="loadingSpinner" />
+      </div>
+    )
+  }
 
   return (
     <div
@@ -671,7 +721,10 @@ export default function App() {
                       onClick={() => setIsModelMenuOpen((v) => !v)}
                     >
                       <span className="titleSelectorName">
-                        {model === 'deepseek-chat' ? 'DeepSeek' : 'DeepSeek R1'}
+                        {model === 'deepseek-chat' ? 'DeepSeek' : 
+                         model === 'deepseek-reasoner' ? 'DeepSeek R1' : 
+                         model === 'qwen-turbo' ? '千问 Turbo' :
+                         model === 'qwen-plus' ? '千问 Plus' : '千问 Max'}
                       </span>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                         <path d="M6 9l6 6 6-6" />
@@ -697,11 +750,7 @@ export default function App() {
                             <div className="titleModelTitle">DeepSeek R1</div>
                             <div className="titleModelSub">强化推理能力</div>
                           </div>
-                          {model === 'deepseek-reasoner' ? (
-                            <span className="titleModelCheck">✓</span>
-                          ) : (
-                            <button type="button" className="titleModelUpgrade">升级</button>
-                          )}
+                          {model === 'deepseek-reasoner' ? <span className="titleModelCheck">✓</span> : null}
                         </button>
                         <button
                           type="button"
@@ -723,6 +772,67 @@ export default function App() {
                             <div className="titleModelSub">适合处理日常任务</div>
                           </div>
                           {model === 'deepseek-chat' ? <span className="titleModelCheck">✓</span> : null}
+                        </button>
+                        <div className="titleModelDivider" />
+                        <button
+                          type="button"
+                          className="titleModelMenuItem"
+                          onClick={() => {
+                            setModel('qwen-max')
+                            setIsModelMenuOpen(false)
+                          }}
+                        >
+                          <span className="titleModelIcon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                              <path d="M2 17l10 5 10-5" />
+                              <path d="M2 12l10 5 10-5" />
+                            </svg>
+                          </span>
+                          <div className="titleModelText">
+                            <div className="titleModelTitle">千问 Max</div>
+                            <div className="titleModelSub">最强能力，复杂任务</div>
+                          </div>
+                          {model === 'qwen-max' ? <span className="titleModelCheck">✓</span> : null}
+                        </button>
+                        <button
+                          type="button"
+                          className="titleModelMenuItem"
+                          onClick={() => {
+                            setModel('qwen-plus')
+                            setIsModelMenuOpen(false)
+                          }}
+                        >
+                          <span className="titleModelIcon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M12 2L2 7l10 5 10-5-10-5z" />
+                              <path d="M2 12l10 5 10-5" />
+                            </svg>
+                          </span>
+                          <div className="titleModelText">
+                            <div className="titleModelTitle">千问 Plus</div>
+                            <div className="titleModelSub">均衡性能，性价比高</div>
+                          </div>
+                          {model === 'qwen-plus' ? <span className="titleModelCheck">✓</span> : null}
+                        </button>
+                        <button
+                          type="button"
+                          className="titleModelMenuItem"
+                          onClick={() => {
+                            setModel('qwen-turbo')
+                            setIsModelMenuOpen(false)
+                          }}
+                        >
+                          <span className="titleModelIcon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+                            </svg>
+                          </span>
+                          <div className="titleModelText">
+                            <div className="titleModelTitle">千问 Turbo</div>
+                            <div className="titleModelSub">速度最快，简单任务</div>
+                          </div>
+                          {model === 'qwen-turbo' ? <span className="titleModelCheck">✓</span> : null}
                         </button>
                       </div>
                     ) : null}
@@ -926,11 +1036,38 @@ export default function App() {
                 </label>
               </div>
 
+              <div className="settingsSection">
+                <div className="settingsSectionTitle">千问 配置</div>
+                <label className="field">
+                  <div className="fieldLabel">API Base URL</div>
+                  <input
+                    value={apiBaseQwen}
+                    className="fieldInput"
+                    type="text"
+                    placeholder={DEFAULT_QWEN_API_BASE}
+                    onChange={(e) => setApiBaseQwen(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <div className="fieldLabel">API Key</div>
+                  <input
+                    value={apiKeyQwen}
+                    className="fieldInput"
+                    type="password"
+                    placeholder="sk-..."
+                    onChange={(e) => setApiKeyQwen(e.target.value)}
+                  />
+                </label>
+              </div>
+
               <label className="field">
                 <div className="fieldLabel">默认模型</div>
-                <select value={model} className="fieldInput" onChange={(e) => setModel(e.target.value as DeepSeekModel)}>
+                <select value={model} className="fieldInput" onChange={(e) => setModel(e.target.value as ModelType)}>
                   <option value="deepseek-chat">deepseek-chat</option>
                   <option value="deepseek-reasoner">deepseek-reasoner</option>
+                  <option value="qwen-plus">qwen-plus</option>
+                  <option value="qwen-turbo">qwen-turbo</option>
+                  <option value="qwen-max">qwen-max</option>
                 </select>
               </label>
 

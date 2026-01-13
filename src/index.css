@@ -1311,3 +1311,34 @@ select {
 .titleModelUpgrade:hover {
   background: #f9fafb;
 }
+
+
+.titleModelDivider {
+  height: 1px;
+  margin: 6px 12px;
+  background: var(--border);
+}
+
+
+/* Loading screen */
+.loadingScreen {
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--bg);
+}
+
+.loadingSpinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
