@@ -199,6 +199,16 @@ function ExpertModeIcon() {
   )
 }
 
+function ThinkingDots() {
+  return (
+    <div className="thinkingDots">
+      <span className="dot"></span>
+      <span className="dot"></span>
+      <span className="dot"></span>
+    </div>
+  )
+}
+
 type StoredChatMessage = ChatMessage & {
   localId: string
 }
@@ -848,7 +858,11 @@ export default function App() {
                     {m.role === 'user' ? '你' : m.role === 'assistant' ? 'DS' : 'S'}
                   </div>
                   <div className="msgBubble">
-                    <div className="msgContent">{m.content}</div>
+                    {m.role === 'assistant' && m.content === '' ? (
+                      <ThinkingDots />
+                    ) : (
+                      <div className="msgContent">{m.content}</div>
+                    )}
                   </div>
                 </div>
               ))}
