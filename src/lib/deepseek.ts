@@ -28,14 +28,18 @@ export class DeepSeekError extends Error {
   }
 }
 
+export const DEFAULT_API_BASE = 'https://api.deepseek.com/v1'
+
 export async function createDeepSeekChatCompletion(opts: {
   apiKey: string
+  apiBase?: string
   model: DeepSeekModel
   messages: ChatMessage[]
   temperature?: number
   signal?: AbortSignal
 }): Promise<string> {
-  const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+  const baseUrl = opts.apiBase || DEFAULT_API_BASE
+  const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,
@@ -70,12 +74,14 @@ export async function createDeepSeekChatCompletion(opts: {
 
 export async function* streamDeepSeekChatCompletion(opts: {
   apiKey: string
+  apiBase?: string
   model: DeepSeekModel
   messages: ChatMessage[]
   temperature?: number
   signal?: AbortSignal
 }): AsyncGenerator<string, void, void> {
-  const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+  const baseUrl = opts.apiBase || DEFAULT_API_BASE
+  const res = await fetch(`${baseUrl}/chat/completions`, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,

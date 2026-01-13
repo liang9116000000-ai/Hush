@@ -3,6 +3,7 @@ import {
   createDeepSeekChatCompletion,
   DeepSeekError,
   streamDeepSeekChatCompletion,
+  DEFAULT_API_BASE,
   type ChatMessage,
   type DeepSeekModel,
 } from './lib/deepseek'
@@ -221,7 +222,10 @@ type ChatSession = {
 }
 
 const STORAGE_KEY = 'soulcode.chats.v1'
-const STORAGE_API_KEY = 'soulcode.deepseek.apiKey'
+const STORAGE_API_KEY_CHAT = 'soulcode.deepseek.apiKey.chat'
+const STORAGE_API_KEY_REASONER = 'soulcode.deepseek.apiKey.reasoner'
+const STORAGE_API_BASE_CHAT = 'soulcode.deepseek.apiBase.chat'
+const STORAGE_API_BASE_REASONER = 'soulcode.deepseek.apiBase.reasoner'
 const STORAGE_MODEL = 'soulcode.deepseek.model'
 
 function nowId() {
@@ -253,7 +257,10 @@ function makeAssistantMessage(content: string, localId: string): StoredChatMessa
 }
 
 export default function App() {
-  const [apiKey, setApiKey] = useState<string>(() => localStorage.getItem(STORAGE_API_KEY) ?? '')
+  const [apiKeyChatModel, setApiKeyChatModel] = useState<string>(() => localStorage.getItem(STORAGE_API_KEY_CHAT) ?? '')
+  const [apiKeyReasonerModel, setApiKeyReasonerModel] = useState<string>(() => localStorage.getItem(STORAGE_API_KEY_REASONER) ?? '')
+  const [apiBaseChatModel, setApiBaseChatModel] = useState<string>(() => localStorage.getItem(STORAGE_API_BASE_CHAT) ?? DEFAULT_API_BASE)
+  const [apiBaseReasonerModel, setApiBaseReasonerModel] = useState<string>(() => localStorage.getItem(STORAGE_API_BASE_REASONER) ?? DEFAULT_API_BASE)
   const [model, setModel] = useState<DeepSeekModel>(
     () => (localStorage.getItem(STORAGE_MODEL) as DeepSeekModel | null) ?? 'deepseek-chat',
   )
@@ -352,6 +359,9 @@ export default function App() {
     setDraft('')
     queueMicrotask(scrollToBottom)
 
+    const apiKey = model === 'deepseek-chat' ? apiKeyChatModel : apiKeyReasonerModel
+    const apiBase = model === 'deepseek-chat' ? apiBaseChatModel : apiBaseReasonerModel
+
     if (!apiKey) {
       setSessions((prev) => {
         const next = prev.map((s) => {
@@ -382,6 +392,7 @@ export default function App() {
       if (!useStream) {
         const text = await createDeepSeekChatCompletion({
           apiKey,
+          apiBase,
           model,
           messages: [...baseMessages, { role: 'user', content }],
           signal: abortRef.current.signal,
@@ -404,6 +415,7 @@ export default function App() {
         let acc = ''
         for await (const delta of streamDeepSeekChatCompletion({
           apiKey,
+          apiBase,
           model,
           messages: [...baseMessages, { role: 'user', content }],
           signal: abortRef.current.signal,
@@ -455,7 +467,10 @@ export default function App() {
   }, [
     activeSession,
     activeSessionId,
-    apiKey,
+    apiKeyChatModel,
+    apiKeyReasonerModel,
+    apiBaseChatModel,
+    apiBaseReasonerModel,
     draft,
     isSending,
     model,
@@ -516,8 +531,20 @@ export default function App() {
   }, [persistSessions])
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_API_KEY, apiKey)
-  }, [apiKey])
+    localStorage.setItem(STORAGE_API_KEY_CHAT, apiKeyChatModel)
+  }, [apiKeyChatModel])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_API_KEY_REASONER, apiKeyReasonerModel)
+  }, [apiKeyReasonerModel])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_API_BASE_CHAT, apiBaseChatModel)
+  }, [apiBaseChatModel])
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_API_BASE_REASONER, apiBaseReasonerModel)
+  }, [apiBaseReasonerModel])
 
   useEffect(() => {
     localStorage.setItem(STORAGE_MODEL, model)
@@ -539,7 +566,7 @@ export default function App() {
       <aside className={`sidebar ${isSidebarCollapsed ? 'sidebarCollapsed' : ''}`}>
         <div className="brandRow">
           <div className="brandMark">
-            <AiLogoIcon size={32} />
+            <img src="/AI.png" alt="Hush" className="brandLogo" />
           </div>
           <div className="brandText">
             <div className="brandTitle">Hush</div>
@@ -721,8 +748,69 @@ export default function App() {
             <div className="landing">
               <div className="landingCenter">
                 <div className="landingLogo">
-                  <img src="/ChatGPT%20Image.png" alt="Hush AI" className="landingHeroImage" />
-                  <div className="landingName">Hush</div>
+                  <div className="titleSelectorWrapper">
+                    <button
+                      type="button"
+                      className="titleSelector"
+                      onClick={() => setIsModelMenuOpen((v) => !v)}
+                    >
+                      <span className="titleSelectorName">
+                        {model === 'deepseek-chat' ? 'DeepSeek' : 'DeepSeek R1'}
+                      </span>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                        <path d="M6 9l6 6 6-6" />
+                      </svg>
+                    </button>
+                    {isModelMenuOpen ? (
+                      <div className="titleModelMenu">
+                        <button
+                          type="button"
+                          className="titleModelMenuItem"
+                          onClick={() => {
+                            setModel('deepseek-reasoner')
+                            setIsModelMenuOpen(false)
+                          }}
+                        >
+                          <span className="titleModelIcon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <rect x="6" y="6" width="12" height="12" rx="2" transform="rotate(45 12 12)" />
+                              <circle cx="12" cy="12" r="2" fill="currentColor" />
+                            </svg>
+                          </span>
+                          <div className="titleModelText">
+                            <div className="titleModelTitle">DeepSeek R1</div>
+                            <div className="titleModelSub">强化推理能力</div>
+                          </div>
+                          {model === 'deepseek-reasoner' ? (
+                            <span className="titleModelCheck">✓</span>
+                          ) : (
+                            <button type="button" className="titleModelUpgrade">升级</button>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          className="titleModelMenuItem"
+                          onClick={() => {
+                            setModel('deepseek-chat')
+                            setIsModelMenuOpen(false)
+                          }}
+                        >
+                          <span className="titleModelIcon">
+                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                              <circle cx="12" cy="12" r="4" />
+                              <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
+                              <path d="M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+                            </svg>
+                          </span>
+                          <div className="titleModelText">
+                            <div className="titleModelTitle">DeepSeek</div>
+                            <div className="titleModelSub">适合处理日常任务</div>
+                          </div>
+                          {model === 'deepseek-chat' ? <span className="titleModelCheck">✓</span> : null}
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
                 </div>
 
                 <div className="landingComposerWrapper">
@@ -747,106 +835,11 @@ export default function App() {
                       onChange={(e) => setDraft(e.target.value)}
                     />
                     <div className="landingTools">
-                      <div className="modelSelectorWrapper">
-                        <button
-                          type="button"
-                          className="modelSelector"
-                          onClick={() => setIsModelMenuOpen((v) => !v)}
-                        >
-                          <span className="modelName">
-                            {model === 'deepseek-chat' ? 'deepseek-chat' : 'deepseek-reasoner'}
-                          </span>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3">
-                            <path d="M6 9l6 6 6-6" />
-                          </svg>
-                        </button>
-                        {isModelMenuOpen ? (
-                          <div className="modelMenu">
-                            <button
-                              type="button"
-                              className={`modelMenuItem ${model === 'deepseek-chat' ? 'modelMenuItemActive' : ''}`}
-                              onClick={() => {
-                                setModel('deepseek-chat')
-                                setIsModelMenuOpen(false)
-                              }}
-                            >
-                              <div className="modelMenuMain">
-                                <span className="modelMenuIcon">
-                                  <AutoModeIcon />
-                                </span>
-                                <div className="modelMenuText">
-                                  <div className="modelMenuTitle">deepseek-chat</div>
-                                  <div className="modelMenuSub">通用对话模型</div>
-                                </div>
-                              </div>
-                              {model === 'deepseek-chat' ? <span className="modelMenuCheck">✓</span> : null}
-                            </button>
-                            <button
-                              type="button"
-                              className={`modelMenuItem ${model === 'deepseek-reasoner' ? 'modelMenuItemActive' : ''}`}
-                              onClick={() => {
-                                setModel('deepseek-reasoner')
-                                setIsModelMenuOpen(false)
-                              }}
-                            >
-                              <div className="modelMenuMain">
-                                <span className="modelMenuIcon">
-                                  <ExpertModeIcon />
-                                </span>
-                                <div className="modelMenuText">
-                                  <div className="modelMenuTitle">deepseek-reasoner</div>
-                                  <div className="modelMenuSub">强化推理能力</div>
-                                </div>
-                              </div>
-                              {model === 'deepseek-reasoner' ? <span className="modelMenuCheck">✓</span> : null}
-                            </button>
-                          <div className="modelMenuDivider" />
-                          <div className="modelMenuSuper">
-                          <div className="modelMenuSuperText">
-                            <div className="modelMenuSuperTitle">SuperHush</div>
-                              <div className="modelMenuSuperSub">解锁扩展能力</div>
-                            </div>
-                            <button type="button" className="modelMenuSuperBtn">
-                              升级
-                            </button>
-                          </div>
-                          <div className="modelMenuDivider" />
-                          <div className="modelMenuCustom">
-                            <div className="modelMenuCustomText">
-                              <div className="modelMenuTitle">自定义指令</div>
-                              <div className="modelMenuSub">未设置</div>
-                            </div>
-                            <button type="button" className="modelMenuCustomBtn">
-                              自定义
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
-                      </div>
                       <button className="landingMic" type="button" aria-label="语音输入">
                         <MicIcon />
                       </button>
                     </div>
                   </form>
-                </div>
-
-                <div className="featureRow">
-                  <button className="featurePill" onClick={() => setDraft('搜索 DeepSearch')}>
-                    <GlobeIcon />
-                    <span>DeepSearch</span>
-                  </button>
-                  <button className="featurePill" onClick={() => setDraft('生成图片')}>
-                    <ImageIcon />
-                    <span>Create Image</span>
-                  </button>
-                  <button className="featurePill" onClick={() => setDraft('今天的新闻')}>
-                    <NewsIcon />
-                    <span>新闻播报员</span>
-                  </button>
-                  <button className="featurePill" onClick={() => setDraft('语音模式')}>
-                    <SoundIcon />
-                    <span>声音</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -969,16 +962,53 @@ export default function App() {
             </div>
 
             <div className="modalBody">
-              <label className="field">
-                <div className="fieldLabel">DeepSeek API Key</div>
-                <input
-                  value={apiKey}
-                  className="fieldInput"
-                  type="password"
-                  placeholder="sk-..."
-                  onChange={(e) => setApiKey(e.target.value)}
-                />
-              </label>
+              <div className="settingsSection">
+                <div className="settingsSectionTitle">deepseek-chat 配置</div>
+                <label className="field">
+                  <div className="fieldLabel">API Base URL</div>
+                  <input
+                    value={apiBaseChatModel}
+                    className="fieldInput"
+                    type="text"
+                    placeholder={DEFAULT_API_BASE}
+                    onChange={(e) => setApiBaseChatModel(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <div className="fieldLabel">API Key</div>
+                  <input
+                    value={apiKeyChatModel}
+                    className="fieldInput"
+                    type="password"
+                    placeholder="sk-..."
+                    onChange={(e) => setApiKeyChatModel(e.target.value)}
+                  />
+                </label>
+              </div>
+
+              <div className="settingsSection">
+                <div className="settingsSectionTitle">deepseek-reasoner 配置</div>
+                <label className="field">
+                  <div className="fieldLabel">API Base URL</div>
+                  <input
+                    value={apiBaseReasonerModel}
+                    className="fieldInput"
+                    type="text"
+                    placeholder={DEFAULT_API_BASE}
+                    onChange={(e) => setApiBaseReasonerModel(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <div className="fieldLabel">API Key</div>
+                  <input
+                    value={apiKeyReasonerModel}
+                    className="fieldInput"
+                    type="password"
+                    placeholder="sk-..."
+                    onChange={(e) => setApiKeyReasonerModel(e.target.value)}
+                  />
+                </label>
+              </div>
 
               <label className="field">
                 <div className="fieldLabel">默认模型</div>
