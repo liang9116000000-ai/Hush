@@ -28,7 +28,19 @@ export class DeepSeekError extends Error {
   }
 }
 
-export const DEFAULT_API_BASE = 'https://api.deepseek.com/v1'
+const getApiBase = () => {
+  if (typeof window === 'undefined') return 'https://api.deepseek.com/v1'
+  
+  // 生产环境：使用同域名的 /api
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.origin}/api/deepseek`
+  }
+  
+  // 开发环境：使用本地后端
+  return 'http://localhost:3000/api/deepseek'
+}
+
+export const DEFAULT_API_BASE = getApiBase()
 
 export async function createDeepSeekChatCompletion(opts: {
   apiKey: string
@@ -81,7 +93,9 @@ export async function* streamDeepSeekChatCompletion(opts: {
   signal?: AbortSignal
 }): AsyncGenerator<string, void, void> {
   const baseUrl = opts.apiBase || DEFAULT_API_BASE
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const url = baseUrl.includes('/api/') ? baseUrl : `${baseUrl}/chat/completions`
+  
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,

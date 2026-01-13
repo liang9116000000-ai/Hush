@@ -1,6 +1,6 @@
 # Hush AI
 
-一个现代化的 AI 聊天应用，支持多个 AI 模型和图像生成。
+一个现代化的全栈 AI 聊天应用，支持多个 AI 模型和图像生成。
 
 ## 功能特性
 
@@ -10,128 +10,146 @@
 - ✅ 流式响应，实时显示
 - ✅ 多会话管理
 - ✅ IndexedDB 本地存储
-- ✅ 独立配置每个模型的 API Key 和 Base URL
+- ✅ 独立配置每个模型的 API Key
 - ✅ 响应式设计
+- ✅ 前后端一体化部署
 
 ## 快速开始
 
-### 前端应用
+### 本地开发
 
 ```bash
-# 安装依赖
-npm install
+# 安装所有依赖（前端 + 后端）
+npm run install:all
 
-# 开发模式
-npm run dev
-
-# 构建生产版本
-npm run build
-
-# 预览生产版本
-npm run preview
+# 同时启动前端和后端
+npm run dev:all
 ```
 
-### 代理服务器（解决 CORS 问题）
+- 前端：http://localhost:5173
+- 后端：http://localhost:3000
 
-由于浏览器的 CORS 限制，图像生成功能需要通过代理服务器访问。
+### 生产部署
+
+#### Docker 部署（推荐）
 
 ```bash
-# 进入代理服务器目录
-cd proxy-server
+# 构建并运行
+docker-compose up -d
 
-# 安装依赖
-npm install
+# 访问应用
+open http://localhost:3000
+```
 
-# 启动代理服务器
+#### 传统部署
+
+```bash
+# 构建
+npm run build:all
+
+# 启动
 npm start
 
-# 或使用开发模式（自动重启）
-npm run dev
+# 访问应用
+open http://localhost:3000
 ```
-
-代理服务器默认运行在 `http://localhost:3001`
-
-## 配置
-
-1. 打开应用，点击左下角设置按钮
-2. 配置各个模型的 API Key 和 Base URL
-
-### 使用代理服务器
-
-启动代理服务器后，在设置中配置：
-
-- **DeepSeek Chat**: `http://localhost:3001/api/deepseek`
-- **DeepSeek Reasoner**: `http://localhost:3001/api/deepseek`
-- **千问**: `http://localhost:3001/api/qwen`
-- **千问图像**: `http://localhost:3001/api/qwen-image`
-
-### 直接使用官方 API
-
-如果不使用代理服务器（可能遇到 CORS 问题）：
-
-- **DeepSeek**: `https://api.deepseek.com/v1`
-- **千问**: `https://dashscope.aliyuncs.com/compatible-mode/v1`
-- **千问图像**: `https://dashscope.aliyuncs.com/api/v1`
-
-## 技术栈
-
-- **前端**: React 19 + TypeScript + Vite
-- **状态管理**: React Hooks
-- **存储**: IndexedDB
-- **代理服务器**: Node.js + Express
-- **样式**: 原生 CSS
 
 ## 项目结构
 
 ```
 .
-├── src/
-│   ├── lib/
-│   │   ├── deepseek.ts      # DeepSeek API
-│   │   ├── qwen.ts          # 千问 API
-│   │   ├── qwen-image.ts    # 千问图像 API
-│   │   └── db.ts            # IndexedDB 封装
-│   ├── App.tsx              # 主应用组件
-│   ├── index.css            # 全局样式
-│   └── main.tsx             # 入口文件
-├── proxy-server/
-│   ├── server.js            # 代理服务器
-│   ├── package.json
-│   └── README.md
-├── public/
-│   └── AI.png               # Logo
-└── README.md
+├── src/                    # 前端源码（React + TypeScript）
+│   ├── lib/               # API 封装
+│   ├── App.tsx            # 主应用
+│   └── index.css          # 样式
+├── server/                # 后端源码（Express）
+│   ├── index.js           # 服务器入口
+│   └── package.json       # 后端依赖
+├── dist/                  # 前端构建产物
+├── Dockerfile             # Docker 配置
+├── docker-compose.yml     # Docker Compose 配置
+└── package.json           # 前端依赖
 ```
 
-## 部署
+## 部署选项
 
-### 前端部署
+### 1. Docker（推荐）
+- 一键部署，环境隔离
+- 详见 `DEPLOY-FULLSTACK.md`
+
+### 2. 云平台
+- **Render.com**（免费）
+- **Railway.app**（$5/月起）
+- **Heroku**（$7/月起）
+
+### 3. VPS
+- Ubuntu/CentOS 服务器
+- 使用 PM2 管理进程
+- Nginx 反向代理
+
+详细部署指南：[DEPLOY-FULLSTACK.md](./DEPLOY-FULLSTACK.md)
+
+## 配置
+
+1. 打开应用
+2. 点击左下角设置按钮
+3. 配置各个模型的 API Key
+
+API Base URL 会自动配置：
+- 开发环境：`http://localhost:3000/api/*`
+- 生产环境：`https://your-domain.com/api/*`
+
+## 技术栈
+
+### 前端
+- React 19 + TypeScript
+- Vite 构建工具
+- IndexedDB 存储
+
+### 后端
+- Node.js + Express
+- CORS 代理
+- 流式响应支持
+
+## 开发脚本
 
 ```bash
+# 前端开发
+npm run dev
+
+# 后端开发
+npm run dev:server
+
+# 同时开发
+npm run dev:all
+
+# 构建前端
 npm run build
+
+# 构建全部
+npm run build:all
+
+# 启动生产服务器
+npm start
+
+# 安装所有依赖
+npm run install:all
 ```
 
-将 `dist` 目录部署到任何静态托管服务（Vercel、Netlify、GitHub Pages 等）。
+## API 端点
 
-### 代理服务器部署
+- `GET /api/health` - 健康检查
+- `POST /api/deepseek/chat/completions` - DeepSeek API
+- `POST /api/qwen/chat/completions` - 千问 API
+- `POST /api/qwen-image/generate` - 千问图像生成
 
-参考 `proxy-server/README.md` 了解详细的部署方法。
+## 环境变量
 
-推荐使用 PM2 或 Docker 部署到生产环境。
+在 `server/.env` 中配置：
 
-## 开发
-
-```bash
-# 安装依赖
-npm install
-
-# 启动开发服务器
-npm run dev
-
-# 在另一个终端启动代理服务器
-cd proxy-server
-npm install
-npm run dev
+```env
+PORT=3000
+NODE_ENV=production
 ```
 
 ## 许可证

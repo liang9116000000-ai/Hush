@@ -28,7 +28,19 @@ export class QwenError extends Error {
   }
 }
 
-export const DEFAULT_QWEN_API_BASE = 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+const getQwenApiBase = () => {
+  if (typeof window === 'undefined') return 'https://dashscope.aliyuncs.com/compatible-mode/v1'
+  
+  // 生产环境：使用同域名的 /api
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.origin}/api/qwen`
+  }
+  
+  // 开发环境：使用本地后端
+  return 'http://localhost:3000/api/qwen'
+}
+
+export const DEFAULT_QWEN_API_BASE = getQwenApiBase()
 
 export async function* streamQwenChatCompletion(opts: {
   apiKey: string
@@ -39,7 +51,9 @@ export async function* streamQwenChatCompletion(opts: {
   signal?: AbortSignal
 }): AsyncGenerator<string, void, void> {
   const baseUrl = opts.apiBase || DEFAULT_QWEN_API_BASE
-  const res = await fetch(`${baseUrl}/chat/completions`, {
+  const url = baseUrl.includes('/api/') ? baseUrl : `${baseUrl}/chat/completions`
+  
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${opts.apiKey}`,

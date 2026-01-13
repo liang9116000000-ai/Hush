@@ -1,0 +1,21 @@
+{
+  "functions": {
+    "api/**/*.js": {
+      "maxDuration": 120
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/deepseek/chat/completions",
+      "destination": "/api/deepseek"
+    },
+    {
+      "source": "/api/qwen/chat/completions",
+      "destination": "/api/qwen"
+    },
+    {
+      "source": "/api/qwen-image/generate",
+      "destination": "/api/qwen-image"
+    }
+  ]
+}

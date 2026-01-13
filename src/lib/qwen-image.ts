@@ -10,7 +10,19 @@ export class QwenImageError extends Error {
   }
 }
 
-export const DEFAULT_QWEN_IMAGE_API_BASE = 'https://dashscope.aliyuncs.com/api/v1'
+const getQwenImageApiBase = () => {
+  if (typeof window === 'undefined') return 'https://dashscope.aliyuncs.com/api/v1'
+  
+  // 生产环境：使用同域名的 /api
+  if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    return `${window.location.origin}/api/qwen-image`
+  }
+  
+  // 开发环境：使用本地后端
+  return 'http://localhost:3000/api/qwen-image'
+}
+
+export const DEFAULT_QWEN_IMAGE_API_BASE = getQwenImageApiBase()
 
 type TaskResponse = {
   output?: {
