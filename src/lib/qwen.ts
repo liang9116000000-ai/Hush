@@ -51,7 +51,8 @@ export async function* streamQwenChatCompletion(opts: {
   signal?: AbortSignal
 }): AsyncGenerator<string, void, void> {
   const baseUrl = opts.apiBase || DEFAULT_QWEN_API_BASE
-  const url = baseUrl.includes('/api/') ? baseUrl : `${baseUrl}/chat/completions`
+  // 如果 baseUrl 已经包含 /chat/completions,直接使用;否则添加
+  const url = baseUrl.endsWith('/chat/completions') ? baseUrl : `${baseUrl}/chat/completions`
   
   const res = await fetch(url, {
     method: 'POST',
