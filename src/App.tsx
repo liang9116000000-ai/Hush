@@ -17,9 +17,15 @@ import {
   generateImage,
   DEFAULT_QWEN_IMAGE_API_BASE,
 } from './lib/qwen-image'
+import {
+  GLMError,
+  streamGLMChatCompletion,
+  DEFAULT_GLM_API_BASE,
+  type GLMModel,
+} from './lib/glm'
 import { getSetting, setSetting, DB_KEYS } from './lib/db'
 
-type ModelType = DeepSeekModel | QwenModel | 'wanx-v1'
+type ModelType = DeepSeekModel | QwenModel | GLMModel | 'wanx-v1'
 
 function AttachIcon() {
   return (
@@ -244,6 +250,8 @@ export default function App() {
   const [apiBaseQwen, setApiBaseQwen] = useState<string>(DEFAULT_QWEN_API_BASE)
   const [apiKeyQwenImage, setApiKeyQwenImage] = useState<string>('')
   const [apiBaseQwenImage, setApiBaseQwenImage] = useState<string>(DEFAULT_QWEN_IMAGE_API_BASE)
+  const [apiKeyGLM, setApiKeyGLM] = useState<string>('')
+  const [apiBaseGLM, setApiBaseGLM] = useState<string>(DEFAULT_GLM_API_BASE)
   const [model, setModel] = useState<ModelType>('deepseek-chat')
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string>('')
@@ -342,16 +350,21 @@ export default function App() {
     queueMicrotask(scrollToBottom)
 
     const isQwen = model.startsWith('qwen-')
+    const isGLM = model.startsWith('glm-')
     const isImage = model === 'wanx-v1'
     const apiKey = isImage
       ? apiKeyQwenImage
       : isQwen 
-      ? apiKeyQwen 
+      ? apiKeyQwen
+      : isGLM
+      ? apiKeyGLM
       : model === 'deepseek-chat' ? apiKeyChatModel : apiKeyReasonerModel
     const apiBase = isImage
       ? apiBaseQwenImage
       : isQwen 
-      ? apiBaseQwen 
+      ? apiBaseQwen
+      : isGLM
+      ? apiBaseGLM
       : model === 'deepseek-chat' ? apiBaseChatModel : apiBaseReasonerModel
 
     if (!apiKey) {
@@ -362,7 +375,7 @@ export default function App() {
             ...s,
             messages: s.messages.map((m): StoredChatMessage =>
               m.localId === assistantPlaceholderId
-                ? makeAssistantMessage(`未配置 ${isImage ? '千问图像' : isQwen ? '千问' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
+                ? makeAssistantMessage(`未配置 ${isImage ? '千问图像' : isQwen ? '千问' : isGLM ? 'GLM' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
                 : m,
             ),
           }
@@ -450,6 +463,32 @@ export default function App() {
             })
             scrollToBottom()
           }
+        } else if (isGLM) {
+          for await (const delta of streamGLMChatCompletion({
+            apiKey,
+            apiBase,
+            model: model as GLMModel,
+            messages: [...baseMessages, { role: 'user', content }],
+            signal: abortRef.current.signal,
+          })) {
+            acc += delta
+            const nextText = acc
+            setSessions((prev) => {
+              const next = prev.map((s) => {
+                if (s.id !== activeSessionId) return s
+                const updated = {
+                  ...s,
+                  messages: s.messages.map((m): StoredChatMessage =>
+                    m.localId === assistantPlaceholderId ? makeAssistantMessage(nextText, assistantPlaceholderId) : m,
+                  ),
+                }
+                return updated
+              })
+              persistSessions(next)
+              return next
+            })
+            scrollToBottom()
+          }
         } else {
           for await (const delta of streamDeepSeekChatCompletion({
             apiKey,
@@ -480,7 +519,7 @@ export default function App() {
       }
     } catch (err) {
       const msg =
-        err instanceof DeepSeekError || err instanceof QwenError || err instanceof QwenImageError
+        err instanceof DeepSeekError || err instanceof QwenError || err instanceof QwenImageError || err instanceof GLMError
           ? err.message
           : err instanceof Error
             ? err.message
@@ -514,6 +553,8 @@ export default function App() {
     apiBaseQwen,
     apiKeyQwenImage,
     apiBaseQwenImage,
+    apiKeyGLM,
+    apiBaseGLM,
     draft,
     isSending,
     model,
@@ -544,6 +585,8 @@ export default function App() {
           savedApiBaseQwen,
           savedApiKeyQwenImage,
           savedApiBaseQwenImage,
+          savedApiKeyGLM,
+          savedApiBaseGLM,
           savedModel,
           savedChats,
         ] = await Promise.all([
@@ -555,6 +598,8 @@ export default function App() {
           getSetting<string>(DB_KEYS.API_BASE_QWEN),
           getSetting<string>(DB_KEYS.API_KEY_QWEN_IMAGE),
           getSetting<string>(DB_KEYS.API_BASE_QWEN_IMAGE),
+          getSetting<string>(DB_KEYS.API_KEY_GLM),
+          getSetting<string>(DB_KEYS.API_BASE_GLM),
           getSetting<ModelType>(DB_KEYS.MODEL),
           getSetting<ChatSession[]>(DB_KEYS.CHATS),
         ])
@@ -567,6 +612,8 @@ export default function App() {
         if (savedApiBaseQwen) setApiBaseQwen(savedApiBaseQwen)
         if (savedApiKeyQwenImage) setApiKeyQwenImage(savedApiKeyQwenImage)
         if (savedApiBaseQwenImage) setApiBaseQwenImage(savedApiBaseQwenImage)
+        if (savedApiKeyGLM) setApiKeyGLM(savedApiKeyGLM)
+        if (savedApiBaseGLM) setApiBaseGLM(savedApiBaseGLM)
         if (savedModel) setModel(savedModel)
 
         if (savedChats && savedChats.length > 0) {
@@ -632,6 +679,16 @@ export default function App() {
     if (isLoading) return
     setSetting(DB_KEYS.API_BASE_QWEN_IMAGE, apiBaseQwenImage)
   }, [apiBaseQwenImage, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_KEY_GLM, apiKeyGLM)
+  }, [apiKeyGLM, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_BASE_GLM, apiBaseGLM)
+  }, [apiBaseGLM, isLoading])
 
   useEffect(() => {
     if (isLoading) return
@@ -853,7 +910,10 @@ export default function App() {
                  model === 'deepseek-reasoner' ? 'DeepSeek R1' : 
                  model === 'qwen-turbo' ? '千问 Turbo' :
                  model === 'qwen-plus' ? '千问 Plus' : 
-                 model === 'qwen-max' ? '千问 Max' : '千问图像'}
+                 model === 'qwen-max' ? '千问 Max' :
+                 model === 'glm-4-plus' ? 'GLM-4-Plus' :
+                 model === 'glm-4-air' ? 'GLM-4-Air' :
+                 model === 'glm-4-flash' ? 'GLM-4-Flash' : '千问图像'}
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M6 9l6 6 6-6" />
@@ -931,6 +991,49 @@ export default function App() {
                     <div className="mainModelSub">最强性能</div>
                   </div>
                   {model === 'qwen-max' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <div className="mainModelDivider" />
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('glm-4-plus')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GLM-4-Plus</div>
+                    <div className="mainModelSub">智谱旗舰</div>
+                  </div>
+                  {model === 'glm-4-plus' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('glm-4-air')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GLM-4-Air</div>
+                    <div className="mainModelSub">快速响应</div>
+                  </div>
+                  {model === 'glm-4-air' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('glm-4-flash')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GLM-4-Flash</div>
+                    <div className="mainModelSub">极速模型</div>
+                  </div>
+                  {model === 'glm-4-flash' && <span className="mainModelCheck">✓</span>}
                 </button>
                 <div className="mainModelDivider" />
                 <button
@@ -1201,6 +1304,30 @@ export default function App() {
                 </label>
               </div>
 
+              <div className="settingsSection">
+                <div className="settingsSectionTitle">GLM 配置</div>
+                <label className="field">
+                  <div className="fieldLabel">API Base URL</div>
+                  <input
+                    value={apiBaseGLM}
+                    className="fieldInput"
+                    type="text"
+                    placeholder={DEFAULT_GLM_API_BASE}
+                    onChange={(e) => setApiBaseGLM(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <div className="fieldLabel">API Key</div>
+                  <input
+                    value={apiKeyGLM}
+                    className="fieldInput"
+                    type="password"
+                    placeholder="sk-..."
+                    onChange={(e) => setApiKeyGLM(e.target.value)}
+                  />
+                </label>
+              </div>
+
               <label className="field">
                 <div className="fieldLabel">默认模型</div>
                 <select value={model} className="fieldInput" onChange={(e) => setModel(e.target.value as ModelType)}>
@@ -1209,6 +1336,9 @@ export default function App() {
                   <option value="qwen-plus">qwen-plus</option>
                   <option value="qwen-turbo">qwen-turbo</option>
                   <option value="qwen-max">qwen-max</option>
+                  <option value="glm-4-plus">glm-4-plus</option>
+                  <option value="glm-4-air">glm-4-air</option>
+                  <option value="glm-4-flash">glm-4-flash</option>
                   <option value="wanx-v1">千问图像 (wanx-v1)</option>
                 </select>
               </label>
