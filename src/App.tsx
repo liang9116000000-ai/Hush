@@ -250,7 +250,7 @@ export default function App() {
   const [draft, setDraft] = useState<string>('')
   const [isSettingsOpen, setIsSettingsOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
+  const [isSidebarModelMenuOpen, setIsSidebarModelMenuOpen] = useState(false)
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false)
   const [sessionMenuOpenId, setSessionMenuOpenId] = useState<string | null>(null)
   const [pendingDeleteSession, setPendingDeleteSession] = useState<ChatSession | null>(null)
@@ -660,16 +660,18 @@ export default function App() {
       }}
     >
       <aside className={`sidebar ${isSidebarCollapsed ? 'sidebarCollapsed' : ''}`}>
-        <div className="brandRow">
-          <div className="brandMark">
-            <img src="/AI.png" alt="Hush" className="brandLogo" />
-          </div>
-          <div className="brandText">
-            <div className="brandTitle">Hush</div>
-          </div>
+        <div className="sidebarTopRow">
+          <button
+            type="button"
+            className="sidebarNewChatBtn"
+            onClick={newChat}
+            aria-label="新对话"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M12 5v14M5 12h14" strokeLinecap="round" />
+            </svg>
+          </button>
         </div>
-
-
 
         <div className="sidebarNav">
           <button
@@ -839,160 +841,121 @@ export default function App() {
       </aside>
 
       <main className="main">
+        <div className="mainTopBar">
+          <div className="mainModelSelectorWrapper">
+            <button
+              type="button"
+              className="mainModelSelector"
+              onClick={() => setIsSidebarModelMenuOpen((v) => !v)}
+            >
+              <span className="mainModelName">
+                {model === 'deepseek-chat' ? 'DeepSeek' : 
+                 model === 'deepseek-reasoner' ? 'DeepSeek R1' : 
+                 model === 'qwen-turbo' ? '千问 Turbo' :
+                 model === 'qwen-plus' ? '千问 Plus' : 
+                 model === 'qwen-max' ? '千问 Max' : '千问图像'}
+              </span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <path d="M6 9l6 6 6-6" />
+              </svg>
+            </button>
+            {isSidebarModelMenuOpen && (
+              <div className="mainModelMenu">
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('deepseek-chat')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">DeepSeek</div>
+                    <div className="mainModelSub">对话模型</div>
+                  </div>
+                  {model === 'deepseek-chat' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('deepseek-reasoner')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">DeepSeek R1</div>
+                    <div className="mainModelSub">推理模型</div>
+                  </div>
+                  {model === 'deepseek-reasoner' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <div className="mainModelDivider" />
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('qwen-turbo')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">千问 Turbo</div>
+                    <div className="mainModelSub">快速响应</div>
+                  </div>
+                  {model === 'qwen-turbo' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('qwen-plus')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">千问 Plus</div>
+                    <div className="mainModelSub">平衡性能</div>
+                  </div>
+                  {model === 'qwen-plus' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('qwen-max')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">千问 Max</div>
+                    <div className="mainModelSub">最强性能</div>
+                  </div>
+                  {model === 'qwen-max' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <div className="mainModelDivider" />
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('wanx-v1')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">千问图像</div>
+                    <div className="mainModelSub">图像生成</div>
+                  </div>
+                  {model === 'wanx-v1' && <span className="mainModelCheck">✓</span>}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
         <div className="chatArea" ref={chatScrollRef}>
           {isEmpty ? (
             <div className="landing">
               <div className="landingCenter">
-                <div className="landingLogo">
-                  <div className="titleSelectorWrapper">
-                    <button
-                      type="button"
-                      className="titleSelector"
-                      onClick={() => setIsModelMenuOpen((v) => !v)}
-                    >
-                      <span className="titleSelectorName">
-                        {model === 'deepseek-chat' ? 'DeepSeek' : 
-                         model === 'deepseek-reasoner' ? 'DeepSeek R1' : 
-                         model === 'qwen-turbo' ? '千问 Turbo' :
-                         model === 'qwen-plus' ? '千问 Plus' : 
-                         model === 'qwen-max' ? '千问 Max' : '千问图像'}
-                      </span>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                        <path d="M6 9l6 6 6-6" />
-                      </svg>
-                    </button>
-                    {isModelMenuOpen ? (
-                      <div className="titleModelMenu">
-                        <button
-                          type="button"
-                          className="titleModelMenuItem"
-                          onClick={() => {
-                            setModel('deepseek-reasoner')
-                            setIsModelMenuOpen(false)
-                          }}
-                        >
-                          <span className="titleModelIcon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <rect x="6" y="6" width="12" height="12" rx="2" transform="rotate(45 12 12)" />
-                              <circle cx="12" cy="12" r="2" fill="currentColor" />
-                            </svg>
-                          </span>
-                          <div className="titleModelText">
-                            <div className="titleModelTitle">DeepSeek R1</div>
-                            <div className="titleModelSub">强化推理能力</div>
-                          </div>
-                          {model === 'deepseek-reasoner' ? <span className="titleModelCheck">✓</span> : null}
-                        </button>
-                        <button
-                          type="button"
-                          className="titleModelMenuItem"
-                          onClick={() => {
-                            setModel('deepseek-chat')
-                            setIsModelMenuOpen(false)
-                          }}
-                        >
-                          <span className="titleModelIcon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <circle cx="12" cy="12" r="4" />
-                              <path d="M12 2v4M12 18v4M2 12h4M18 12h4" />
-                              <path d="M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-                            </svg>
-                          </span>
-                          <div className="titleModelText">
-                            <div className="titleModelTitle">DeepSeek</div>
-                            <div className="titleModelSub">适合处理日常任务</div>
-                          </div>
-                          {model === 'deepseek-chat' ? <span className="titleModelCheck">✓</span> : null}
-                        </button>
-                        <div className="titleModelDivider" />
-                        <button
-                          type="button"
-                          className="titleModelMenuItem"
-                          onClick={() => {
-                            setModel('qwen-max')
-                            setIsModelMenuOpen(false)
-                          }}
-                        >
-                          <span className="titleModelIcon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                              <path d="M2 17l10 5 10-5" />
-                              <path d="M2 12l10 5 10-5" />
-                            </svg>
-                          </span>
-                          <div className="titleModelText">
-                            <div className="titleModelTitle">千问 Max</div>
-                            <div className="titleModelSub">最强能力，复杂任务</div>
-                          </div>
-                          {model === 'qwen-max' ? <span className="titleModelCheck">✓</span> : null}
-                        </button>
-                        <button
-                          type="button"
-                          className="titleModelMenuItem"
-                          onClick={() => {
-                            setModel('qwen-plus')
-                            setIsModelMenuOpen(false)
-                          }}
-                        >
-                          <span className="titleModelIcon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M12 2L2 7l10 5 10-5-10-5z" />
-                              <path d="M2 12l10 5 10-5" />
-                            </svg>
-                          </span>
-                          <div className="titleModelText">
-                            <div className="titleModelTitle">千问 Plus</div>
-                            <div className="titleModelSub">均衡性能，性价比高</div>
-                          </div>
-                          {model === 'qwen-plus' ? <span className="titleModelCheck">✓</span> : null}
-                        </button>
-                        <button
-                          type="button"
-                          className="titleModelMenuItem"
-                          onClick={() => {
-                            setModel('qwen-turbo')
-                            setIsModelMenuOpen(false)
-                          }}
-                        >
-                          <span className="titleModelIcon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
-                            </svg>
-                          </span>
-                          <div className="titleModelText">
-                            <div className="titleModelTitle">千问 Turbo</div>
-                            <div className="titleModelSub">速度最快，简单任务</div>
-                          </div>
-                          {model === 'qwen-turbo' ? <span className="titleModelCheck">✓</span> : null}
-                        </button>
-                        <div className="titleModelDivider" />
-                        <button
-                          type="button"
-                          className="titleModelMenuItem"
-                          onClick={() => {
-                            setModel('wanx-v1')
-                            setIsModelMenuOpen(false)
-                          }}
-                        >
-                          <span className="titleModelIcon">
-                            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <rect x="3" y="3" width="18" height="18" rx="2" />
-                              <path d="M9 9h.01" strokeLinecap="round" />
-                              <path d="M15 15l-3-3-6 6" />
-                              <circle cx="17.5" cy="7.5" r="1.5" />
-                            </svg>
-                          </span>
-                          <div className="titleModelText">
-                            <div className="titleModelTitle">千问图像</div>
-                            <div className="titleModelSub">AI 图像生成</div>
-                          </div>
-                          {model === 'wanx-v1' ? <span className="titleModelCheck">✓</span> : null}
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-
+                <div className="landingTitle">你想聊点什么？</div>
                 <div className="landingComposerWrapper">
                   <form
                     className="landingComposer"
