@@ -1,4 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import ReactMarkdown from 'react-markdown'
+import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import {
   DeepSeekError,
   streamDeepSeekChatCompletion,
@@ -135,53 +138,85 @@ function DeleteIcon() {
   )
 }
 
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button className="codeBlockCopy" onClick={handleCopy} aria-label="复制代码">
+      {copied ? (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M20 6L9 17l-5-5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      ) : (
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+          <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 function MessageContent({ content }: { content: string }) {
   const [previewImage, setPreviewImage] = useState<string | null>(null)
-  
-  // 检测是否包含图片 Markdown
-  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g
-  const parts: Array<{ type: 'text' | 'image'; content: string; alt?: string }> = []
-  let lastIndex = 0
-  let match
-
-  while ((match = imageRegex.exec(content)) !== null) {
-    // 添加图片前的文本
-    if (match.index > lastIndex) {
-      parts.push({ type: 'text', content: content.slice(lastIndex, match.index) })
-    }
-    // 添加图片
-    parts.push({ type: 'image', content: match[2], alt: match[1] })
-    lastIndex = match.index + match[0].length
-  }
-
-  // 添加剩余文本
-  if (lastIndex < content.length) {
-    parts.push({ type: 'text', content: content.slice(lastIndex) })
-  }
-
-  // 如果没有图片，直接返回文本
-  if (parts.length === 0) {
-    return <div className="msgContent">{content}</div>
-  }
 
   return (
     <>
       <div className="msgContent">
-        {parts.map((part, idx) => {
-          if (part.type === 'image') {
-            return (
-              <div key={idx} className="msgImage">
-                <img 
-                  src={part.content} 
-                  alt={part.alt || '生成的图像'} 
-                  onClick={() => setPreviewImage(part.content)}
-                  loading="lazy"
-                />
-              </div>
-            )
-          }
-          return part.content ? <div key={idx}>{part.content}</div> : null
-        })}
+        <ReactMarkdown
+          components={{
+            code({ node, inline, className, children, ...props }) {
+              const match = /language-(\w+)/.exec(className || '')
+              const codeString = String(children).replace(/\n$/, '')
+              
+              return !inline && match ? (
+                <div className="codeBlock">
+                  <div className="codeBlockHeader">
+                    <span className="codeBlockLang">{match[1]}</span>
+                    <CopyButton text={codeString} />
+                  </div>
+                  <SyntaxHighlighter
+                    style={vscDarkPlus}
+                    language={match[1]}
+                    PreTag="div"
+                    customStyle={{
+                      margin: 0,
+                      borderRadius: '0 0 8px 8px',
+                      fontSize: '14px',
+                    }}
+                    {...props}
+                  >
+                    {codeString}
+                  </SyntaxHighlighter>
+                </div>
+              ) : (
+                <code className={className} {...props}>
+                  {children}
+                </code>
+              )
+            },
+            img({ src, alt }) {
+              return (
+                <div className="msgImage">
+                  <img 
+                    src={src} 
+                    alt={alt || '图像'} 
+                    onClick={() => setPreviewImage(src || null)}
+                    loading="lazy"
+                  />
+                </div>
+              )
+            },
+          }}
+        >
+          {content}
+        </ReactMarkdown>
       </div>
       {previewImage && (
         <div className="imagePreview" onClick={() => setPreviewImage(null)}>
