@@ -1174,6 +1174,20 @@ export default function App() {
                   </div>
                   {model === 'qwen-max' && <span className="mainModelCheck">✓</span>}
                 </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('wanx-v1')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">千问图像</div>
+                    <div className="mainModelSub">图像生成</div>
+                  </div>
+                  {model === 'wanx-v1' && <span className="mainModelCheck">✓</span>}
+                </button>
                 <div className="mainModelDivider" />
                 <button
                   type="button"
@@ -1301,21 +1315,6 @@ export default function App() {
                     <div className="mainModelSub">经济实惠</div>
                   </div>
                   {model === 'gpt-3.5-turbo' && <span className="mainModelCheck">✓</span>}
-                </button>
-                <div className="mainModelDivider" />
-                <button
-                  type="button"
-                  className="mainModelMenuItem"
-                  onClick={() => {
-                    setModel('wanx-v1')
-                    setIsSidebarModelMenuOpen(false)
-                  }}
-                >
-                  <div className="mainModelText">
-                    <div className="mainModelTitle">千问图像</div>
-                    <div className="mainModelSub">图像生成</div>
-                  </div>
-                  {model === 'wanx-v1' && <span className="mainModelCheck">✓</span>}
                 </button>
               </div>
             )}
@@ -1629,6 +1628,7 @@ export default function App() {
                   <option value="qwen-plus">qwen-plus</option>
                   <option value="qwen-turbo">qwen-turbo</option>
                   <option value="qwen-max">qwen-max</option>
+                  <option value="wanx-v1">千问图像 (wanx-v1)</option>
                   <option value="glm-4-plus">glm-4-plus</option>
                   <option value="glm-4-air">glm-4-air</option>
                   <option value="glm-4-flash">glm-4-flash</option>
@@ -1638,7 +1638,6 @@ export default function App() {
                   <option value="gpt-4o-mini">gpt-4o-mini</option>
                   <option value="gpt-4-turbo">gpt-4-turbo</option>
                   <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
-                  <option value="wanx-v1">千问图像 (wanx-v1)</option>
                 </select>
               </label>
 
