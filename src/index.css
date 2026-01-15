@@ -1518,6 +1518,115 @@ select {
   }
 }
 
+/* Image generating status */
+.imageGeneratingWrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.imageGeneratingStatus {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.imageGeneratingText {
+  font-size: 15px;
+  color: #6366f1;
+  font-weight: 500;
+  background: linear-gradient(90deg, #6366f1, #8b5cf6, #ec4899, #6366f1);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradientShift 3s linear infinite;
+}
+
+.imageGeneratingDots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.imageGeneratingDots .dot {
+  width: 8px;
+  height: 8px;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  border-radius: 50%;
+  animation: imageGeneratingBounce 1.4s ease-in-out infinite;
+}
+
+.imageGeneratingDots .dot:nth-child(1) {
+  animation-delay: 0s;
+}
+
+.imageGeneratingDots .dot:nth-child(2) {
+  animation-delay: 0.2s;
+}
+
+.imageGeneratingDots .dot:nth-child(3) {
+  animation-delay: 0.4s;
+}
+
+.imageGeneratingPlaceholder {
+  width: 100%;
+  max-width: 400px;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  overflow: hidden;
+  position: relative;
+  background: #f3f4f6;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.imageGeneratingGradient {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 182, 193, 0.3) 0%,
+    rgba(221, 160, 221, 0.3) 25%,
+    rgba(173, 216, 230, 0.3) 50%,
+    rgba(255, 218, 185, 0.3) 75%,
+    rgba(255, 182, 193, 0.3) 100%
+  );
+  background-size: 400% 400%;
+  animation: gradientMove 8s ease infinite;
+}
+
+@keyframes imageGeneratingBounce {
+  0%, 60%, 100% {
+    transform: translateY(0) scale(1);
+    opacity: 0.6;
+  }
+  30% {
+    transform: translateY(-8px) scale(1.2);
+    opacity: 1;
+  }
+}
+
+@keyframes gradientShift {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+@keyframes gradientMove {
+  0% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
+  100% {
+    background-position: 0% 50%;
+  }
+}
+
 
 /* Settings sections */
 .settingsSection {
@@ -1685,16 +1794,18 @@ select {
 /* Message images */
 .msgImage {
   margin: 12px 0;
+  max-width: 400px;
+  width: 100%;
+  aspect-ratio: 1 / 1;
   border-radius: 12px;
   overflow: hidden;
-  max-width: 400px;
 }
 
 .msgImage img {
   display: block;
   width: 100%;
-  height: auto;
-  border-radius: 12px;
+  height: 100%;
+  object-fit: cover;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
   cursor: pointer;
   transition: transform 0.2s;

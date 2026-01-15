@@ -26,9 +26,15 @@ import {
   DEFAULT_GLM_API_BASE,
   type GLMModel,
 } from './lib/glm'
+import {
+  OpenAIError,
+  streamOpenAIChatCompletion,
+  DEFAULT_OPENAI_API_BASE,
+  type OpenAIModel,
+} from './lib/openai'
 import { getSetting, setSetting, DB_KEYS } from './lib/db'
 
-type ModelType = DeepSeekModel | QwenModel | GLMModel | 'wanx-v1'
+type ModelType = DeepSeekModel | QwenModel | GLMModel | OpenAIModel | 'wanx-v1'
 
 function AttachIcon() {
   return (
@@ -246,6 +252,24 @@ function ThinkingDots() {
   )
 }
 
+function ImageGeneratingStatus({ status }: { status: string }) {
+  return (
+    <div className="imageGeneratingWrapper">
+      <div className="imageGeneratingStatus">
+        <div className="imageGeneratingText">{status}</div>
+        <div className="imageGeneratingDots">
+          <span className="dot"></span>
+          <span className="dot"></span>
+          <span className="dot"></span>
+        </div>
+      </div>
+      <div className="imageGeneratingPlaceholder">
+        <div className="imageGeneratingGradient"></div>
+      </div>
+    </div>
+  )
+}
+
 type StoredChatMessage = ChatMessage & {
   localId: string
 }
@@ -287,6 +311,8 @@ export default function App() {
   const [apiBaseQwenImage, setApiBaseQwenImage] = useState<string>(DEFAULT_QWEN_IMAGE_API_BASE)
   const [apiKeyGLM, setApiKeyGLM] = useState<string>('')
   const [apiBaseGLM, setApiBaseGLM] = useState<string>(DEFAULT_GLM_API_BASE)
+  const [apiKeyOpenAI, setApiKeyOpenAI] = useState<string>('')
+  const [apiBaseOpenAI, setApiBaseOpenAI] = useState<string>(DEFAULT_OPENAI_API_BASE)
   const [model, setModel] = useState<ModelType>('deepseek-chat')
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string>('')
@@ -386,6 +412,7 @@ export default function App() {
 
     const isQwen = model.startsWith('qwen-')
     const isGLM = model.startsWith('glm-')
+    const isOpenAI = model.startsWith('gpt-')
     const isImage = model === 'wanx-v1'
     const apiKey = isImage
       ? apiKeyQwenImage
@@ -393,6 +420,8 @@ export default function App() {
       ? apiKeyQwen
       : isGLM
       ? apiKeyGLM
+      : isOpenAI
+      ? apiKeyOpenAI
       : model === 'deepseek-chat' ? apiKeyChatModel : apiKeyReasonerModel
     const apiBase = isImage
       ? apiBaseQwenImage
@@ -400,6 +429,8 @@ export default function App() {
       ? apiBaseQwen
       : isGLM
       ? apiBaseGLM
+      : isOpenAI
+      ? apiBaseOpenAI
       : model === 'deepseek-chat' ? apiBaseChatModel : apiBaseReasonerModel
 
     if (!apiKey) {
@@ -410,7 +441,7 @@ export default function App() {
             ...s,
             messages: s.messages.map((m): StoredChatMessage =>
               m.localId === assistantPlaceholderId
-                ? makeAssistantMessage(`未配置 ${isImage ? '千问图像' : isQwen ? '千问' : isGLM ? 'GLM' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
+                ? makeAssistantMessage(`未配置 ${isImage ? '千问图像' : isQwen ? '千问' : isGLM ? 'GLM' : isOpenAI ? 'ChatGPT' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
                 : m,
             ),
           }
@@ -524,6 +555,32 @@ export default function App() {
             })
             scrollToBottom()
           }
+        } else if (isOpenAI) {
+          for await (const delta of streamOpenAIChatCompletion({
+            apiKey,
+            apiBase,
+            model: model as OpenAIModel,
+            messages: [...baseMessages, { role: 'user', content }],
+            signal: abortRef.current.signal,
+          })) {
+            acc += delta
+            const nextText = acc
+            setSessions((prev) => {
+              const next = prev.map((s) => {
+                if (s.id !== activeSessionId) return s
+                const updated = {
+                  ...s,
+                  messages: s.messages.map((m): StoredChatMessage =>
+                    m.localId === assistantPlaceholderId ? makeAssistantMessage(nextText, assistantPlaceholderId) : m,
+                  ),
+                }
+                return updated
+              })
+              persistSessions(next)
+              return next
+            })
+            scrollToBottom()
+          }
         } else {
           for await (const delta of streamDeepSeekChatCompletion({
             apiKey,
@@ -554,7 +611,7 @@ export default function App() {
       }
     } catch (err) {
       const msg =
-        err instanceof DeepSeekError || err instanceof QwenError || err instanceof QwenImageError || err instanceof GLMError
+        err instanceof DeepSeekError || err instanceof QwenError || err instanceof QwenImageError || err instanceof GLMError || err instanceof OpenAIError
           ? err.message
           : err instanceof Error
             ? err.message
@@ -590,6 +647,8 @@ export default function App() {
     apiBaseQwenImage,
     apiKeyGLM,
     apiBaseGLM,
+    apiKeyOpenAI,
+    apiBaseOpenAI,
     draft,
     isSending,
     model,
@@ -622,6 +681,8 @@ export default function App() {
           savedApiBaseQwenImage,
           savedApiKeyGLM,
           savedApiBaseGLM,
+          savedApiKeyOpenAI,
+          savedApiBaseOpenAI,
           savedModel,
           savedChats,
         ] = await Promise.all([
@@ -635,6 +696,8 @@ export default function App() {
           getSetting<string>(DB_KEYS.API_BASE_QWEN_IMAGE),
           getSetting<string>(DB_KEYS.API_KEY_GLM),
           getSetting<string>(DB_KEYS.API_BASE_GLM),
+          getSetting<string>(DB_KEYS.API_KEY_OPENAI),
+          getSetting<string>(DB_KEYS.API_BASE_OPENAI),
           getSetting<ModelType>(DB_KEYS.MODEL),
           getSetting<ChatSession[]>(DB_KEYS.CHATS),
         ])
@@ -649,6 +712,8 @@ export default function App() {
         if (savedApiBaseQwenImage) setApiBaseQwenImage(savedApiBaseQwenImage)
         if (savedApiKeyGLM) setApiKeyGLM(savedApiKeyGLM)
         if (savedApiBaseGLM) setApiBaseGLM(savedApiBaseGLM)
+        if (savedApiKeyOpenAI) setApiKeyOpenAI(savedApiKeyOpenAI)
+        if (savedApiBaseOpenAI) setApiBaseOpenAI(savedApiBaseOpenAI)
         if (savedModel) setModel(savedModel)
 
         if (savedChats && savedChats.length > 0) {
@@ -724,6 +789,16 @@ export default function App() {
     if (isLoading) return
     setSetting(DB_KEYS.API_BASE_GLM, apiBaseGLM)
   }, [apiBaseGLM, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_KEY_OPENAI, apiKeyOpenAI)
+  }, [apiKeyOpenAI, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_BASE_OPENAI, apiBaseOpenAI)
+  }, [apiBaseOpenAI, isLoading])
 
   useEffect(() => {
     if (isLoading) return
@@ -948,7 +1023,12 @@ export default function App() {
                  model === 'qwen-max' ? '千问 Max' :
                  model === 'glm-4-plus' ? 'GLM-4-Plus' :
                  model === 'glm-4-air' ? 'GLM-4-Air' :
-                 model === 'glm-4-flash' ? 'GLM-4-Flash' : '千问图像'}
+                 model === 'glm-4-flash' ? 'GLM-4-Flash' :
+                 model === 'gpt-5.2' ? 'GPT-5.2' :
+                 model === 'gpt-4o' ? 'GPT-4o' :
+                 model === 'gpt-4o-mini' ? 'GPT-4o-mini' :
+                 model === 'gpt-4-turbo' ? 'GPT-4-Turbo' :
+                 model === 'gpt-3.5-turbo' ? 'GPT-3.5-Turbo' : '千问图像'}
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M6 9l6 6 6-6" />
@@ -1075,6 +1155,77 @@ export default function App() {
                   type="button"
                   className="mainModelMenuItem"
                   onClick={() => {
+                    setModel('gpt-5.2')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GPT-5.2</div>
+                    <div className="mainModelSub">最新旗舰</div>
+                  </div>
+                  {model === 'gpt-5.2' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('gpt-4o')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GPT-4o</div>
+                    <div className="mainModelSub">OpenAI 旗舰</div>
+                  </div>
+                  {model === 'gpt-4o' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('gpt-4o-mini')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GPT-4o-mini</div>
+                    <div className="mainModelSub">快速高效</div>
+                  </div>
+                  {model === 'gpt-4o-mini' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('gpt-4-turbo')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GPT-4-Turbo</div>
+                    <div className="mainModelSub">强大推理</div>
+                  </div>
+                  {model === 'gpt-4-turbo' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('gpt-3.5-turbo')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GPT-3.5-Turbo</div>
+                    <div className="mainModelSub">经济实惠</div>
+                  </div>
+                  {model === 'gpt-3.5-turbo' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <div className="mainModelDivider" />
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
                     setModel('wanx-v1')
                     setIsSidebarModelMenuOpen(false)
                   }}
@@ -1134,6 +1285,8 @@ export default function App() {
                   <div className="msgBubble">
                     {m.role === 'assistant' && m.content === '' ? (
                       <ThinkingDots />
+                    ) : m.role === 'assistant' && (m.content.includes('正在生成') || m.content.includes('正在提交') || m.content.includes('等待')) ? (
+                      <ImageGeneratingStatus status={m.content} />
                     ) : (
                       <MessageContent content={m.content} />
                     )}
@@ -1363,6 +1516,30 @@ export default function App() {
                 </label>
               </div>
 
+              <div className="settingsSection">
+                <div className="settingsSectionTitle">ChatGPT 配置</div>
+                <label className="field">
+                  <div className="fieldLabel">API Base URL</div>
+                  <input
+                    value={apiBaseOpenAI}
+                    className="fieldInput"
+                    type="text"
+                    placeholder={DEFAULT_OPENAI_API_BASE}
+                    onChange={(e) => setApiBaseOpenAI(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <div className="fieldLabel">API Key</div>
+                  <input
+                    value={apiKeyOpenAI}
+                    className="fieldInput"
+                    type="password"
+                    placeholder="sk-..."
+                    onChange={(e) => setApiKeyOpenAI(e.target.value)}
+                  />
+                </label>
+              </div>
+
               <label className="field">
                 <div className="fieldLabel">默认模型</div>
                 <select value={model} className="fieldInput" onChange={(e) => setModel(e.target.value as ModelType)}>
@@ -1374,6 +1551,11 @@ export default function App() {
                   <option value="glm-4-plus">glm-4-plus</option>
                   <option value="glm-4-air">glm-4-air</option>
                   <option value="glm-4-flash">glm-4-flash</option>
+                  <option value="gpt-5.2">gpt-5.2</option>
+                  <option value="gpt-4o">gpt-4o</option>
+                  <option value="gpt-4o-mini">gpt-4o-mini</option>
+                  <option value="gpt-4-turbo">gpt-4-turbo</option>
+                  <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
                   <option value="wanx-v1">千问图像 (wanx-v1)</option>
                 </select>
               </label>

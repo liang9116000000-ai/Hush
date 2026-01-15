@@ -165,6 +165,54 @@ app.post('/api/glm/chat/completions', async (req, res) => {
   }
 })
 
+// OpenAI API 代理
+app.post('/api/openai/chat/completions', async (req, res) => {
+  const authHeader = req.headers.authorization
+  
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' })
+  }
+
+  try {
+    const response = await fetch('https://us.getgoapi.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req.body),
+    })
+
+    // 处理流式响应
+    if (req.body.stream) {
+      res.setHeader('Content-Type', 'text/event-stream')
+      res.setHeader('Cache-Control', 'no-cache')
+      res.setHeader('Connection', 'keep-alive')
+      
+      const reader = response.body.getReader()
+      const decoder = new TextDecoder()
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read()
+          if (done) break
+          res.write(decoder.decode(value, { stream: true }))
+        }
+      } catch (err) {
+        console.error('Stream error:', err)
+      } finally {
+        res.end()
+      }
+    } else {
+      const data = await response.json()
+      res.status(response.status).json(data)
+    }
+  } catch (error) {
+    console.error('OpenAI API error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
 // 千问图像生成 API
 app.post('/api/qwen-image/generate', async (req, res) => {
   const { apiKey, prompt, negativePrompt, size, n } = req.body
@@ -266,6 +314,7 @@ app.listen(PORT, () => {
   console.log(`🔗 DeepSeek API: http://localhost:${PORT}/api/deepseek/chat/completions`)
   console.log(`🔗 Qwen API: http://localhost:${PORT}/api/qwen/chat/completions`)
   console.log(`🔗 GLM API: http://localhost:${PORT}/api/glm/chat/completions`)
+  console.log(`🔗 OpenAI API: http://localhost:${PORT}/api/openai/chat/completions`)
   console.log(`🖼️  Qwen Image API: http://localhost:${PORT}/api/qwen-image/generate`)
   
   if (process.env.NODE_ENV === 'production') {

@@ -8,11 +8,20 @@ function openDB(): Promise<IDBDatabase> {
   if (dbInstance) return Promise.resolve(dbInstance)
 
   return new Promise((resolve, reject) => {
+    // 添加超时处理
+    const timeout = setTimeout(() => {
+      reject(new Error('IndexedDB 打开超时'))
+    }, 5000)
+
     const request = indexedDB.open(DB_NAME, DB_VERSION)
 
-    request.onerror = () => reject(request.error)
+    request.onerror = () => {
+      clearTimeout(timeout)
+      reject(request.error)
+    }
 
     request.onsuccess = () => {
+      clearTimeout(timeout)
       dbInstance = request.result
       resolve(dbInstance)
     }
@@ -77,6 +86,8 @@ export const DB_KEYS = {
   API_BASE_QWEN_IMAGE: 'apiBase.qwen.image',
   API_KEY_GLM: 'apiKey.glm',
   API_BASE_GLM: 'apiBase.glm',
+  API_KEY_OPENAI: 'apiKey.openai',
+  API_BASE_OPENAI: 'apiBase.openai',
   MODEL: 'model',
   CHATS: 'chats',
 } as const
