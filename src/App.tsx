@@ -178,9 +178,10 @@ function MessageContent({ content }: { content: string }) {
         <ReactMarkdown
           components={{
             code(props) {
-              const { node, inline, className, children, ...rest } = props
+              const { className, children, ...rest } = props
               const match = /language-(\w+)/.exec(className || '')
               const codeString = String(children).replace(/\n$/, '')
+              const inline = (props as any).inline
               
               return !inline && match ? (
                 <div className="codeBlock">
