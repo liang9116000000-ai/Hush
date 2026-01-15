@@ -16,6 +16,10 @@
     {
       "source": "/api/qwen-image/generate",
       "destination": "/api/qwen-image"
+    },
+    {
+      "source": "/api/openai/chat/completions",
+      "destination": "/api/openai"
     }
   ]
 }
