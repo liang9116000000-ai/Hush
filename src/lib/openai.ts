@@ -1,4 +1,4 @@
-export type OpenAIModel = 'gpt-5.2' | 'gpt-4o' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo'
+export type OpenAIModel = 'gpt-5.2' | 'gpt-4o' | 'gpt-4o-image' | 'gpt-4o-mini' | 'gpt-4-turbo' | 'gpt-3.5-turbo'
 
 export type ChatRole = 'system' | 'user' | 'assistant'
 

@@ -88,6 +88,7 @@ export const DB_KEYS = {
   API_BASE_GLM: 'apiBase.glm',
   API_KEY_OPENAI: 'apiKey.openai',
   API_BASE_OPENAI: 'apiBase.openai',
+  API_BASE_OPENAI_IMAGE: 'apiBase.openai.image',
   MODEL: 'model',
   CHATS: 'chats',
 } as const

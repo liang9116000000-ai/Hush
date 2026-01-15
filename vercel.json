@@ -20,6 +20,10 @@
     {
       "source": "/api/openai/chat/completions",
       "destination": "/api/openai"
+    },
+    {
+      "source": "/api/openai-image/generate",
+      "destination": "/api/openai-image"
     }
   ]
 }

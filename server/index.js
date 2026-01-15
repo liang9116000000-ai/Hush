@@ -295,6 +295,32 @@ app.post('/api/qwen-image/generate', async (req, res) => {
   }
 })
 
+// OpenAI 图像生成 API
+app.post('/api/openai-image/generate', async (req, res) => {
+  const authHeader = req.headers.authorization
+  
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' })
+  }
+
+  try {
+    const response = await fetch('https://us.getgoapi.com/v1/images/generations', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req.body),
+    })
+
+    const data = await response.json()
+    res.status(response.status).json(data)
+  } catch (error) {
+    console.error('OpenAI Image API error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
 // 静态文件服务（生产环境）
 if (process.env.NODE_ENV === 'production') {
   const distPath = path.join(__dirname, '../dist')
@@ -316,6 +342,7 @@ app.listen(PORT, () => {
   console.log(`🔗 GLM API: http://localhost:${PORT}/api/glm/chat/completions`)
   console.log(`🔗 OpenAI API: http://localhost:${PORT}/api/openai/chat/completions`)
   console.log(`🖼️  Qwen Image API: http://localhost:${PORT}/api/qwen-image/generate`)
+  console.log(`🖼️  OpenAI Image API: http://localhost:${PORT}/api/openai-image/generate`)
   
   if (process.env.NODE_ENV === 'production') {
     console.log(`🌐 Frontend: http://localhost:${PORT}`)

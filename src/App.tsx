@@ -32,9 +32,15 @@ import {
   DEFAULT_OPENAI_API_BASE,
   type OpenAIModel,
 } from './lib/openai'
+import {
+  OpenAIImageError,
+  generateOpenAIImage,
+  DEFAULT_OPENAI_IMAGE_API_BASE,
+  type OpenAIImageModel,
+} from './lib/openai-image'
 import { getSetting, setSetting, DB_KEYS } from './lib/db'
 
-type ModelType = DeepSeekModel | QwenModel | GLMModel | OpenAIModel | 'wanx-v1'
+type ModelType = DeepSeekModel | QwenModel | GLMModel | OpenAIModel | OpenAIImageModel | 'wanx-v1'
 
 function AttachIcon() {
   return (
@@ -315,6 +321,7 @@ export default function App() {
   const [apiBaseGLM, setApiBaseGLM] = useState<string>(DEFAULT_GLM_API_BASE)
   const [apiKeyOpenAI, setApiKeyOpenAI] = useState<string>('')
   const [apiBaseOpenAI, setApiBaseOpenAI] = useState<string>(DEFAULT_OPENAI_API_BASE)
+  const [apiBaseOpenAIImage, setApiBaseOpenAIImage] = useState<string>(DEFAULT_OPENAI_IMAGE_API_BASE)
   const [model, setModel] = useState<ModelType>('deepseek-chat')
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string>('')
@@ -414,10 +421,14 @@ export default function App() {
 
     const isQwen = model.startsWith('qwen-')
     const isGLM = model.startsWith('glm-')
-    const isOpenAI = model.startsWith('gpt-')
-    const isImage = model === 'wanx-v1'
-    const apiKey = isImage
+    const isOpenAI = model.startsWith('gpt-') && model !== 'gpt-4o-image'
+    const isOpenAIImage = model === 'gpt-4o-image'
+    const isQwenImage = model === 'wanx-v1'
+    const isImage = isQwenImage || isOpenAIImage
+    const apiKey = isQwenImage
       ? apiKeyQwenImage
+      : isOpenAIImage
+      ? apiKeyOpenAI
       : isQwen 
       ? apiKeyQwen
       : isGLM
@@ -425,8 +436,10 @@ export default function App() {
       : isOpenAI
       ? apiKeyOpenAI
       : model === 'deepseek-chat' ? apiKeyChatModel : apiKeyReasonerModel
-    const apiBase = isImage
+    const apiBase = isQwenImage
       ? apiBaseQwenImage
+      : isOpenAIImage
+      ? apiBaseOpenAIImage
       : isQwen 
       ? apiBaseQwen
       : isGLM
@@ -443,7 +456,7 @@ export default function App() {
             ...s,
             messages: s.messages.map((m): StoredChatMessage =>
               m.localId === assistantPlaceholderId
-                ? makeAssistantMessage(`未配置 ${isImage ? '千问图像' : isQwen ? '千问' : isGLM ? 'GLM' : isOpenAI ? 'ChatGPT' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
+                ? makeAssistantMessage(`未配置 ${isQwenImage ? '千问图像' : isOpenAIImage ? 'OpenAI 图像' : isQwen ? '千问' : isGLM ? 'GLM' : isOpenAI ? 'ChatGPT' : 'DeepSeek'} API Key（左下角设置）。`, assistantPlaceholderId)
                 : m,
             ),
           }
@@ -461,8 +474,50 @@ export default function App() {
       .map((m) => ({ role: m.role, content: m.content }))
 
     try {
-      if (isImage) {
-        // 图像生成
+      if (isOpenAIImage) {
+        // OpenAI 图像生成
+        const urls = await generateOpenAIImage({
+          apiKey,
+          apiBase,
+          model: 'gpt-4o-image',
+          prompt: content,
+          signal: abortRef.current.signal,
+          onProgress: (status) => {
+            setSessions((prev) => {
+              const next = prev.map((s) => {
+                if (s.id !== activeSessionId) return s
+                const updated = {
+                  ...s,
+                  messages: s.messages.map((m): StoredChatMessage =>
+                    m.localId === assistantPlaceholderId ? makeAssistantMessage(status, assistantPlaceholderId) : m,
+                  ),
+                }
+                return updated
+              })
+              persistSessions(next)
+              return next
+            })
+            scrollToBottom()
+          },
+        })
+        
+        const imageMarkdown = urls.map(url => `![生成的图像](${url})`).join('\n\n')
+        setSessions((prev) => {
+          const next = prev.map((s) => {
+            if (s.id !== activeSessionId) return s
+            const updated = {
+              ...s,
+              messages: s.messages.map((m): StoredChatMessage =>
+                m.localId === assistantPlaceholderId ? makeAssistantMessage(imageMarkdown, assistantPlaceholderId) : m,
+              ),
+            }
+            return updated
+          })
+          persistSessions(next)
+          return next
+        })
+      } else if (isQwenImage) {
+        // 千问图像生成
         const urls = await generateImage({
           apiKey,
           apiBase,
@@ -613,7 +668,7 @@ export default function App() {
       }
     } catch (err) {
       const msg =
-        err instanceof DeepSeekError || err instanceof QwenError || err instanceof QwenImageError || err instanceof GLMError || err instanceof OpenAIError
+        err instanceof DeepSeekError || err instanceof QwenError || err instanceof QwenImageError || err instanceof GLMError || err instanceof OpenAIError || err instanceof OpenAIImageError
           ? err.message
           : err instanceof Error
             ? err.message
@@ -651,6 +706,7 @@ export default function App() {
     apiBaseGLM,
     apiKeyOpenAI,
     apiBaseOpenAI,
+    apiBaseOpenAIImage,
     draft,
     isSending,
     model,
@@ -685,6 +741,7 @@ export default function App() {
           savedApiBaseGLM,
           savedApiKeyOpenAI,
           savedApiBaseOpenAI,
+          savedApiBaseOpenAIImage,
           savedModel,
           savedChats,
         ] = await Promise.all([
@@ -700,6 +757,7 @@ export default function App() {
           getSetting<string>(DB_KEYS.API_BASE_GLM),
           getSetting<string>(DB_KEYS.API_KEY_OPENAI),
           getSetting<string>(DB_KEYS.API_BASE_OPENAI),
+          getSetting<string>(DB_KEYS.API_BASE_OPENAI_IMAGE),
           getSetting<ModelType>(DB_KEYS.MODEL),
           getSetting<ChatSession[]>(DB_KEYS.CHATS),
         ])
@@ -716,6 +774,7 @@ export default function App() {
         if (savedApiBaseGLM) setApiBaseGLM(savedApiBaseGLM)
         if (savedApiKeyOpenAI) setApiKeyOpenAI(savedApiKeyOpenAI)
         if (savedApiBaseOpenAI) setApiBaseOpenAI(savedApiBaseOpenAI)
+        if (savedApiBaseOpenAIImage) setApiBaseOpenAIImage(savedApiBaseOpenAIImage)
         if (savedModel) setModel(savedModel)
 
         if (savedChats && savedChats.length > 0) {
@@ -801,6 +860,11 @@ export default function App() {
     if (isLoading) return
     setSetting(DB_KEYS.API_BASE_OPENAI, apiBaseOpenAI)
   }, [apiBaseOpenAI, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_BASE_OPENAI_IMAGE, apiBaseOpenAIImage)
+  }, [apiBaseOpenAIImage, isLoading])
 
   useEffect(() => {
     if (isLoading) return
@@ -1028,9 +1092,11 @@ export default function App() {
                  model === 'glm-4-flash' ? 'GLM-4-Flash' :
                  model === 'gpt-5.2' ? 'GPT-5.2' :
                  model === 'gpt-4o' ? 'GPT-4o' :
+                 model === 'gpt-4o-image' ? 'GPT-4o 图像' :
                  model === 'gpt-4o-mini' ? 'GPT-4o-mini' :
                  model === 'gpt-4-turbo' ? 'GPT-4-Turbo' :
-                 model === 'gpt-3.5-turbo' ? 'GPT-3.5-Turbo' : '千问图像'}
+                 model === 'gpt-3.5-turbo' ? 'GPT-3.5-Turbo' : 
+                 model === 'wanx-v1' ? '千问图像' : model}
               </span>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <path d="M6 9l6 6 6-6" />
@@ -1180,6 +1246,20 @@ export default function App() {
                     <div className="mainModelSub">OpenAI 旗舰</div>
                   </div>
                   {model === 'gpt-4o' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('gpt-4o-image')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">GPT-4o 图像</div>
+                    <div className="mainModelSub">图像生成</div>
+                  </div>
+                  {model === 'gpt-4o-image' && <span className="mainModelCheck">✓</span>}
                 </button>
                 <button
                   type="button"
@@ -1555,6 +1635,7 @@ export default function App() {
                   <option value="glm-4-flash">glm-4-flash</option>
                   <option value="gpt-5.2">gpt-5.2</option>
                   <option value="gpt-4o">gpt-4o</option>
+                  <option value="gpt-4o-image">gpt-4o-image</option>
                   <option value="gpt-4o-mini">gpt-4o-mini</option>
                   <option value="gpt-4-turbo">gpt-4-turbo</option>
                   <option value="gpt-3.5-turbo">gpt-3.5-turbo</option>
