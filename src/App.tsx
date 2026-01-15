@@ -424,7 +424,6 @@ export default function App() {
     const isOpenAI = model.startsWith('gpt-') && model !== 'gpt-4o-image'
     const isOpenAIImage = model === 'gpt-4o-image'
     const isQwenImage = model === 'wanx-v1'
-    const isImage = isQwenImage || isOpenAIImage
     const apiKey = isQwenImage
       ? apiKeyQwenImage
       : isOpenAIImage
