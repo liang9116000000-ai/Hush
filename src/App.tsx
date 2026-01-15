@@ -177,7 +177,8 @@ function MessageContent({ content }: { content: string }) {
       <div className="msgContent">
         <ReactMarkdown
           components={{
-            code({ node, inline, className, children, ...props }) {
+            code(props) {
+              const { node, inline, className, children, ...rest } = props
               const match = /language-(\w+)/.exec(className || '')
               const codeString = String(children).replace(/\n$/, '')
               
@@ -196,18 +197,18 @@ function MessageContent({ content }: { content: string }) {
                       borderRadius: '0 0 8px 8px',
                       fontSize: '14px',
                     }}
-                    {...props}
                   >
                     {codeString}
                   </SyntaxHighlighter>
                 </div>
               ) : (
-                <code className={className} {...props}>
+                <code className={className} {...rest}>
                   {children}
                 </code>
               )
             },
-            img({ src, alt }) {
+            img(props) {
+              const { src, alt } = props
               return (
                 <div className="msgImage">
                   <img 
