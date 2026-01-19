@@ -28,21 +28,65 @@ app.get('/api/health', (req, res) => {
 // OCR API 端点
 app.post('/api/ocr', upload.single('file'), async (req, res) => {
   if (!req.file) {
+    console.error('OCR: 未上传文件')
     return res.status(400).json({ error: { message: '未上传文件' } })
   }
 
+  console.log('OCR: 收到文件', {
+    filename: req.file.originalname,
+    mimetype: req.file.mimetype,
+    size: req.file.buffer.length
+  })
+
+  let worker = null
+
   try {
     // 动态导入 tesseract.js
+    console.log('OCR: 导入 tesseract.js...')
     const { createWorker } = await import('tesseract.js')
     
-    const worker = await createWorker('chi_sim+eng')
-    const { data: { text } } = await worker.recognize(req.file.buffer)
-    await worker.terminate()
+    console.log('OCR: 创建 worker...')
+    worker = await createWorker('chi_sim+eng', 1, {
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          console.log(`OCR: 识别进度 ${Math.round(m.progress * 100)}%`)
+        }
+      }
+    })
     
-    res.status(200).json({ text })
+    console.log('OCR: 开始识别...')
+    const { data: { text, confidence } } = await worker.recognize(req.file.buffer)
+    
+    console.log('OCR: 识别完成', {
+      textLength: text.length,
+      confidence: confidence
+    })
+    
+    if (!text || text.trim().length === 0) {
+      return res.status(400).json({ error: { message: '未识别到文字' } })
+    }
+    
+    res.status(200).json({ 
+      text: text.trim(),
+      confidence: confidence
+    })
   } catch (error) {
     console.error('OCR error:', error)
-    res.status(500).json({ error: { message: error.message || 'OCR 识别失败' } })
+    res.status(500).json({ 
+      error: { 
+        message: error.message || 'OCR 识别失败',
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      } 
+    })
+  } finally {
+    if (worker) {
+      try {
+        await worker.terminate()
+        console.log('OCR: Worker 已清理')
+      } catch (err) {
+        console.error('OCR: 清理 worker 失败', err)
+      }
+    }
   }
 })
 

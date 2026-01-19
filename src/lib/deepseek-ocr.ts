@@ -13,9 +13,11 @@ export class DeepSeekOCRError extends Error {
 const getOCRApiBase = () => {
   if (typeof window === 'undefined') return ''
   
-  // 使用当前应用的 OCR 端点
+  // 在 Vercel 生产环境，返回空（需要用户配置外部 OCR 服务）
+  // 在本地开发环境，使用本地 OCR 端点
   if (window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
-    return `${window.location.origin}/api/ocr`
+    // Vercel 环境 - 需要用户配置外部 OCR
+    return ''
   }
   
   return 'http://localhost:3000/api/ocr'
@@ -172,11 +174,36 @@ export async function performOCR(opts: {
   
   // 如果没有配置 OCR 服务，返回友好提示
   if (!ocrBase) {
-    throw new DeepSeekOCRError(
-      '请先配置 OCR API Base URL。\n\n' +
-      '默认使用内置 OCR 服务（基于 Tesseract.js）\n' +
-      '如需使用其他 OCR 服务，请在设置中配置 OCR API Base URL。'
-    )
+    const isProduction = typeof window !== 'undefined' && 
+                        window.location.hostname !== 'localhost' && 
+                        window.location.hostname !== '127.0.0.1'
+    
+    if (isProduction) {
+      throw new DeepSeekOCRError(
+        '⚠️ 需要配置 OCR 服务\n\n' +
+        'Vercel 环境不支持内置 OCR，请配置外部 OCR 服务：\n\n' +
+        '方案 1：部署 PaddleOCR 服务（推荐）\n' +
+        '  - 参考 paddle-ocr-service/server.py\n' +
+        '  - 运行：python server.py\n' +
+        '  - 配置：http://your-server:5000/api/ocr\n\n' +
+        '方案 2：使用云 OCR API\n' +
+        '  - 百度 OCR、腾讯 OCR、阿里云 OCR\n' +
+        '  - 创建代理服务转发请求\n\n' +
+        '方案 3：本地开发\n' +
+        '  - 运行本地服务器\n' +
+        '  - 配置：http://localhost:3000/api/ocr\n\n' +
+        '详细文档：OCR-SERVICE-SETUP.md'
+      )
+    } else {
+      throw new DeepSeekOCRError(
+        '请先配置 OCR API Base URL。\n\n' +
+        '本地开发：使用内置 OCR 服务\n' +
+        '- 确保主服务器正在运行（npm start）\n' +
+        '- OCR API Base URL 留空或填：http://localhost:3000/api/ocr\n\n' +
+        '生产环境：需要外部 OCR 服务\n' +
+        '- 参考文档：OCR-SERVICE-SETUP.md'
+      )
+    }
   }
   
   try {
