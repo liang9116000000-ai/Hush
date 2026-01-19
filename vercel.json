@@ -6,8 +6,16 @@
   },
   "rewrites": [
     {
+      "source": "/api/ocr",
+      "destination": "/api/ocr"
+    },
+    {
       "source": "/api/deepseek/chat/completions",
       "destination": "/api/deepseek"
+    },
+    {
+      "source": "/api/deepseek-ocr/chat/completions",
+      "destination": "/api/deepseek-ocr"
     },
     {
       "source": "/api/qwen/chat/completions",

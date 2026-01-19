@@ -16,9 +16,34 @@ const PORT = process.env.PORT || 3000
 app.use(cors())
 app.use(express.json({ limit: '10mb' }))
 
+// 用于处理文件上传的中间件
+import multer from 'multer'
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } })
+
 // API 路由
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Hush AI Server is running' })
+})
+
+// OCR API 端点
+app.post('/api/ocr', upload.single('file'), async (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ error: { message: '未上传文件' } })
+  }
+
+  try {
+    // 动态导入 tesseract.js
+    const { createWorker } = await import('tesseract.js')
+    
+    const worker = await createWorker('chi_sim+eng')
+    const { data: { text } } = await worker.recognize(req.file.buffer)
+    await worker.terminate()
+    
+    res.status(200).json({ text })
+  } catch (error) {
+    console.error('OCR error:', error)
+    res.status(500).json({ error: { message: error.message || 'OCR 识别失败' } })
+  }
 })
 
 // DeepSeek API 代理
@@ -65,6 +90,32 @@ app.post('/api/deepseek/chat/completions', async (req, res) => {
     }
   } catch (error) {
     console.error('DeepSeek API error:', error)
+    res.status(500).json({ error: error.message })
+  }
+})
+
+// DeepSeek OCR API 代理
+app.post('/api/deepseek-ocr/chat/completions', async (req, res) => {
+  const authHeader = req.headers.authorization
+  
+  if (!authHeader) {
+    return res.status(401).json({ error: 'Authorization header required' })
+  }
+
+  try {
+    const response = await fetch('https://api.deepseek.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': authHeader,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(req.body),
+    })
+
+    const data = await response.json()
+    res.status(response.status).json(data)
+  } catch (error) {
+    console.error('DeepSeek OCR API error:', error)
     res.status(500).json({ error: error.message })
   }
 })
@@ -337,7 +388,9 @@ if (process.env.NODE_ENV === 'production') {
 app.listen(PORT, () => {
   console.log(`🚀 Hush AI Server running on http://localhost:${PORT}`)
   console.log(`📝 Health check: http://localhost:${PORT}/api/health`)
+  console.log(`🔍 OCR API: http://localhost:${PORT}/api/ocr`)
   console.log(`🔗 DeepSeek API: http://localhost:${PORT}/api/deepseek/chat/completions`)
+  console.log(`📄 DeepSeek OCR API: http://localhost:${PORT}/api/deepseek-ocr/chat/completions`)
   console.log(`🔗 Qwen API: http://localhost:${PORT}/api/qwen/chat/completions`)
   console.log(`🔗 GLM API: http://localhost:${PORT}/api/glm/chat/completions`)
   console.log(`🔗 OpenAI API: http://localhost:${PORT}/api/openai/chat/completions`)

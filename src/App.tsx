@@ -38,9 +38,14 @@ import {
   DEFAULT_OPENAI_IMAGE_API_BASE,
   type OpenAIImageModel,
 } from './lib/openai-image'
+import {
+  DeepSeekOCRError,
+  performOCR,
+  DEFAULT_DEEPSEEK_OCR_API_BASE,
+} from './lib/deepseek-ocr'
 import { getSetting, setSetting, DB_KEYS } from './lib/db'
 
-type ModelType = DeepSeekModel | QwenModel | GLMModel | OpenAIModel | OpenAIImageModel | 'wanx-v1'
+type ModelType = DeepSeekModel | QwenModel | GLMModel | OpenAIModel | OpenAIImageModel | 'wanx-v1' | 'deepseek-ocr'
 
 function AttachIcon() {
   return (
@@ -322,6 +327,8 @@ export default function App() {
   const [apiKeyOpenAI, setApiKeyOpenAI] = useState<string>('')
   const [apiBaseOpenAI, setApiBaseOpenAI] = useState<string>(DEFAULT_OPENAI_API_BASE)
   const [apiBaseOpenAIImage, setApiBaseOpenAIImage] = useState<string>(DEFAULT_OPENAI_IMAGE_API_BASE)
+  const [apiKeyOCR, setApiKeyOCR] = useState<string>('')
+  const [apiBaseOCR, setApiBaseOCR] = useState<string>(DEFAULT_DEEPSEEK_OCR_API_BASE)
   const [model, setModel] = useState<ModelType>('deepseek-chat')
   const [sessions, setSessions] = useState<ChatSession[]>([])
   const [activeSessionId, setActiveSessionId] = useState<string>('')
@@ -335,9 +342,11 @@ export default function App() {
   const [isSending, setIsSending] = useState(false)
   const [errorText, setErrorText] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
 
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId) ?? null,
@@ -383,6 +392,131 @@ export default function App() {
     },
     [activeSessionId, persistSessions],
   )
+
+  const handleFileUpload = useCallback(async (file: File) => {
+    if (!file) return
+    
+    const validTypes = ['image/jpeg', 'image/png', 'image/jpg', 'image/webp', 'application/pdf']
+    if (!validTypes.includes(file.type)) {
+      setErrorText('仅支持 JPG、PNG、WEBP 图片和 PDF 文件')
+      return
+    }
+    
+    if (file.size > 10 * 1024 * 1024) {
+      setErrorText('文件大小不能超过 10MB')
+      return
+    }
+    
+    if (!apiKeyChatModel) {
+      setErrorText('未配置 DeepSeek API Key（左下角设置）')
+      return
+    }
+    
+    // 清理 API Key，移除可能的空格和特殊字符
+    const cleanApiKey = apiKeyChatModel.trim()
+    
+    if (!cleanApiKey.startsWith('sk-')) {
+      setErrorText('DeepSeek API Key 格式错误，应以 sk- 开头')
+      return
+    }
+    
+    setUploadedFile(file)
+    setErrorText('')
+    
+    if (!activeSession) return
+    if (isSending) return
+    
+    setIsSending(true)
+    abortRef.current?.abort()
+    abortRef.current = new AbortController()
+    
+    const assistantPlaceholderId = nowId()
+    const userMessage = `[上传文件: ${file.name}]\n请识别文件中的内容`
+    
+    setSessions((prev) => {
+      const next = prev.map((s) => {
+        if (s.id !== activeSessionId) return s
+        const nextMessages: StoredChatMessage[] = [
+          ...s.messages,
+          makeUserMessage(userMessage),
+          makeAssistantMessage('', assistantPlaceholderId),
+        ]
+        const updated: ChatSession = {
+          ...s,
+          messages: nextMessages,
+        }
+        ensureTitleFromFirstUserMessage(updated)
+        return updated
+      })
+      persistSessions(next)
+      return next
+    })
+    
+    queueMicrotask(scrollToBottom)
+    
+    try {
+      const result = await performOCR({
+        apiKey: apiKeyChatModel.trim(),
+        apiBase: apiBaseChatModel,
+        ocrApiBase: apiBaseOCR,
+        ocrApiKey: apiKeyOCR,
+        file,
+        signal: abortRef.current.signal,
+        onProgress: (status) => {
+          setSessions((prev) => {
+            const next = prev.map((s) => {
+              if (s.id !== activeSessionId) return s
+              const updated = {
+                ...s,
+                messages: s.messages.map((m): StoredChatMessage =>
+                  m.localId === assistantPlaceholderId ? makeAssistantMessage(status, assistantPlaceholderId) : m,
+                ),
+              }
+              return updated
+            })
+            persistSessions(next)
+            return next
+          })
+          scrollToBottom()
+        },
+      })
+      
+      setSessions((prev) => {
+        const next = prev.map((s) => {
+          if (s.id !== activeSessionId) return s
+          const updated = {
+            ...s,
+            messages: s.messages.map((m): StoredChatMessage =>
+              m.localId === assistantPlaceholderId ? makeAssistantMessage(result, assistantPlaceholderId) : m,
+            ),
+          }
+          return updated
+        })
+        persistSessions(next)
+        return next
+      })
+    } catch (err) {
+      const msg = err instanceof DeepSeekOCRError ? err.message : err instanceof Error ? err.message : 'OCR 识别失败'
+      setErrorText(msg)
+      setSessions((prev) => {
+        const next = prev.map((s) => {
+          if (s.id !== activeSessionId) return s
+          const updated = {
+            ...s,
+            messages: s.messages.map((m): StoredChatMessage =>
+              m.localId === assistantPlaceholderId ? makeAssistantMessage(`出错了：${msg}`, assistantPlaceholderId) : m,
+            ),
+          }
+          return updated
+        })
+        persistSessions(next)
+        return next
+      })
+    } finally {
+      setIsSending(false)
+      setUploadedFile(null)
+    }
+  }, [activeSession, activeSessionId, apiKeyChatModel, apiBaseChatModel, isSending, persistSessions, scrollToBottom])
 
   const send = useCallback(async () => {
     const content = draft.trim()
@@ -741,6 +875,8 @@ export default function App() {
           savedApiKeyOpenAI,
           savedApiBaseOpenAI,
           savedApiBaseOpenAIImage,
+          savedApiKeyOCR,
+          savedApiBaseOCR,
           savedModel,
           savedChats,
         ] = await Promise.all([
@@ -757,6 +893,8 @@ export default function App() {
           getSetting<string>(DB_KEYS.API_KEY_OPENAI),
           getSetting<string>(DB_KEYS.API_BASE_OPENAI),
           getSetting<string>(DB_KEYS.API_BASE_OPENAI_IMAGE),
+          getSetting<string>(DB_KEYS.API_KEY_OCR),
+          getSetting<string>(DB_KEYS.API_BASE_OCR),
           getSetting<ModelType>(DB_KEYS.MODEL),
           getSetting<ChatSession[]>(DB_KEYS.CHATS),
         ])
@@ -774,6 +912,8 @@ export default function App() {
         if (savedApiKeyOpenAI) setApiKeyOpenAI(savedApiKeyOpenAI)
         if (savedApiBaseOpenAI) setApiBaseOpenAI(savedApiBaseOpenAI)
         if (savedApiBaseOpenAIImage) setApiBaseOpenAIImage(savedApiBaseOpenAIImage)
+        if (savedApiKeyOCR) setApiKeyOCR(savedApiKeyOCR)
+        if (savedApiBaseOCR) setApiBaseOCR(savedApiBaseOCR)
         if (savedModel) setModel(savedModel)
 
         if (savedChats && savedChats.length > 0) {
@@ -864,6 +1004,16 @@ export default function App() {
     if (isLoading) return
     setSetting(DB_KEYS.API_BASE_OPENAI_IMAGE, apiBaseOpenAIImage)
   }, [apiBaseOpenAIImage, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_KEY_OCR, apiKeyOCR)
+  }, [apiKeyOCR, isLoading])
+
+  useEffect(() => {
+    if (isLoading) return
+    setSetting(DB_KEYS.API_BASE_OCR, apiBaseOCR)
+  }, [apiBaseOCR, isLoading])
 
   useEffect(() => {
     if (isLoading) return
@@ -1082,7 +1232,8 @@ export default function App() {
             >
               <span className="mainModelName">
                 {model === 'deepseek-chat' ? 'DeepSeek' : 
-                 model === 'deepseek-reasoner' ? 'DeepSeek R1' : 
+                 model === 'deepseek-reasoner' ? 'DeepSeek R1' :
+                 model === 'deepseek-ocr' ? 'DeepSeek OCR' :
                  model === 'qwen-turbo' ? '千问 Turbo' :
                  model === 'qwen-plus' ? '千问 Plus' : 
                  model === 'qwen-max' ? '千问 Max' :
@@ -1130,6 +1281,20 @@ export default function App() {
                     <div className="mainModelSub">推理模型</div>
                   </div>
                   {model === 'deepseek-reasoner' && <span className="mainModelCheck">✓</span>}
+                </button>
+                <button
+                  type="button"
+                  className="mainModelMenuItem"
+                  onClick={() => {
+                    setModel('deepseek-ocr')
+                    setIsSidebarModelMenuOpen(false)
+                  }}
+                >
+                  <div className="mainModelText">
+                    <div className="mainModelTitle">DeepSeek OCR</div>
+                    <div className="mainModelSub">图像识别</div>
+                  </div>
+                  {model === 'deepseek-ocr' && <span className="mainModelCheck">✓</span>}
                 </button>
                 <div className="mainModelDivider" />
                 <button
@@ -1334,7 +1499,32 @@ export default function App() {
                     }}
                   >
                     <div className="landingInputLeft">
-                      <button type="button" className="attachBtn">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/jpg,image/webp,application/pdf"
+                        style={{ display: 'none' }}
+                        onChange={(e) => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            void handleFileUpload(file)
+                          }
+                          e.target.value = ''
+                        }}
+                      />
+                      <button 
+                        type="button" 
+                        className="attachBtn"
+                        onClick={() => {
+                          if (model !== 'deepseek-ocr') {
+                            setErrorText('请先选择 DeepSeek OCR 模型')
+                            return
+                          }
+                          fileInputRef.current?.click()
+                        }}
+                        title={model === 'deepseek-ocr' ? '上传图片或PDF进行OCR识别' : '请先选择 DeepSeek OCR 模型'}
+                        disabled={model !== 'deepseek-ocr'}
+                      >
                         <AttachIcon />
                       </button>
                     </div>
@@ -1388,7 +1578,19 @@ export default function App() {
                 }}
               >
                 <div className="landingInputLeft">
-                  <button type="button" className="attachBtn">
+                  <button 
+                    type="button" 
+                    className="attachBtn"
+                    onClick={() => {
+                      if (model !== 'deepseek-ocr') {
+                        setErrorText('请先选择 DeepSeek OCR 模型')
+                        return
+                      }
+                      fileInputRef.current?.click()
+                    }}
+                    title={model === 'deepseek-ocr' ? '上传图片或PDF进行OCR识别' : '请先选择 DeepSeek OCR 模型'}
+                    disabled={model !== 'deepseek-ocr'}
+                  >
                     <AttachIcon />
                   </button>
                 </div>
@@ -1620,11 +1822,42 @@ export default function App() {
                 </label>
               </div>
 
+              <div className="settingsSection">
+                <div className="settingsSectionTitle">DeepSeek OCR 配置</div>
+                <div style={{ marginBottom: '12px', fontSize: '13px', color: '#666', lineHeight: '1.5' }}>
+                  <strong>✅ 已内置 OCR 服务</strong>（基于 Tesseract.js）<br/>
+                  • 留空使用内置服务，支持中英文识别<br/>
+                  • 如需更高精度，可配置外部 OCR 服务<br/>
+                  • 参考 <code>OCR-SERVICE-SETUP.md</code> 部署
+                </div>
+                <label className="field">
+                  <div className="fieldLabel">OCR API Base URL（可选）</div>
+                  <input
+                    value={apiBaseOCR}
+                    className="fieldInput"
+                    type="text"
+                    placeholder="留空使用内置服务"
+                    onChange={(e) => setApiBaseOCR(e.target.value)}
+                  />
+                </label>
+                <label className="field">
+                  <div className="fieldLabel">OCR API Key（可选）</div>
+                  <input
+                    value={apiKeyOCR}
+                    className="fieldInput"
+                    type="password"
+                    placeholder="外部服务需要时填写"
+                    onChange={(e) => setApiKeyOCR(e.target.value)}
+                  />
+                </label>
+              </div>
+
               <label className="field">
                 <div className="fieldLabel">默认模型</div>
                 <select value={model} className="fieldInput" onChange={(e) => setModel(e.target.value as ModelType)}>
                   <option value="deepseek-chat">deepseek-chat</option>
                   <option value="deepseek-reasoner">deepseek-reasoner</option>
+                  <option value="deepseek-ocr">deepseek-ocr</option>
                   <option value="qwen-plus">qwen-plus</option>
                   <option value="qwen-turbo">qwen-turbo</option>
                   <option value="qwen-max">qwen-max</option>
