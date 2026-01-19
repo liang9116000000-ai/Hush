@@ -1036,6 +1036,9 @@ export default function App() {
         if (sessionMenuOpenId) {
           setSessionMenuOpenId(null)
         }
+        if (isSidebarModelMenuOpen) {
+          setIsSidebarModelMenuOpen(false)
+        }
       }}
     >
       <aside className={`sidebar ${isSidebarCollapsed ? 'sidebarCollapsed' : ''}`}>
@@ -1250,7 +1253,7 @@ export default function App() {
               </svg>
             </button>
             {isSidebarModelMenuOpen && (
-              <div className="mainModelMenu">
+              <div className="mainModelMenu" onClick={(e) => e.stopPropagation()}>
                 <button
                   type="button"
                   className="mainModelMenuItem"
