@@ -342,7 +342,6 @@ export default function App() {
   const [isSending, setIsSending] = useState(false)
   const [errorText, setErrorText] = useState<string>('')
   const [isLoading, setIsLoading] = useState(true)
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
 
   const abortRef = useRef<AbortController | null>(null)
   const chatScrollRef = useRef<HTMLDivElement | null>(null)
@@ -420,7 +419,6 @@ export default function App() {
       return
     }
     
-    setUploadedFile(file)
     setErrorText('')
     
     if (!activeSession) return
@@ -514,7 +512,6 @@ export default function App() {
       })
     } finally {
       setIsSending(false)
-      setUploadedFile(null)
     }
   }, [activeSession, activeSessionId, apiKeyChatModel, apiBaseChatModel, isSending, persistSessions, scrollToBottom])
 
